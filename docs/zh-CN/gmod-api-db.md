@@ -65,7 +65,7 @@ luxc gmod api update `
 - curated 修正通过 `--override <json>` 在官方数据生成后叠加，必须经过审查并可追溯。
 - coverage manifest 必须能说明官方页总数、API 候选页数量、结构化解析数量、fallback 文档页数量、跳过页面和失败页面。
 
-当前 bundled manifest 覆盖 6335 个官方页面、6121 个 API 候选页面，其中 5991 个页面结构化解析，130 个页面作为 fallback 文档页保留，生成 10022 个 entry、497 个 hook、151 个 class，失败转换为 0。
+当前 bundled manifest 覆盖 6335 个官方页面、6122 个 API 候选页面，其中 6121 个页面结构化解析，1 个页面作为 fallback 文档页保留，生成 10023 个 entry、497 个 hook、186 个 class，失败转换为 0。
 
 override 文件是轻量 JSON patch，不需要重复完整 generated database 元数据：
 
@@ -104,6 +104,22 @@ ApiSymbol {
   doc_revision?: string
 }
 ```
+
+class 和 panel metadata 同样从官方 markup 生成，包括 `<type parent="...">` 和 `<panel><parent>...</parent></panel>`：
+
+```ts
+ClassSymbol {
+  name: string
+  kind: "class" | "panel"
+  realm?: "shared" | "server" | "client" | "menu"
+  parent?: string
+  doc: DocPage
+  methods: ApiSymbol[]
+  docs_url: string
+}
+```
+
+parent chain 必须来自官方 generated data。Lux 不能把人工维护的继承表作为主数据源。
 
 文档模型不能被压缩成一句摘要：
 
@@ -154,6 +170,21 @@ net.Broadcast
 ```
 
 这条规则同时用于编译器 realm 检查、LSP completion 过滤、hover 文档显示和 signature help。
+
+## Class 和 Panel Parent Chain
+
+GMod 对象文档不是平面的。Player、Weapon、NPC、Vehicle、Derma panel 以及很多 API surface 都会从文档中的 parent 继承方法。generated database 必须保留这些 parent metadata，并提供共享查询：
+
+```text
+method_for_class_or_base("DButton", "SetSize")
+  -> DButton
+  -> DLabel
+  -> Label
+  -> Panel
+  -> Panel:SetSize
+```
+
+LSP completion、hover 和 signature help 必须使用同一个 class 查询 API。例如 `local button = vgui.Create("DButton")` 后输入 `button:`，应该同时出现 DButton 自身方法 `SetImage`，以及继承自 Panel 的 `SetSize`、`Dock` 等方法。
 
 ## Extern
 

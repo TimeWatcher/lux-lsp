@@ -35,9 +35,12 @@
   coverage manifest.
 - Done: bundle an offline generated database.
 - Done: use the official page list as the coverage baseline. The current
-  generated manifest covers 6,335 official pages and 6,121 API candidate pages:
-  5,991 structured conversions, 130 fallback documentation pages, and zero
+  generated manifest covers 6,335 official pages and 6,122 API candidate pages:
+  6,121 structured conversions, 1 fallback documentation page, and zero
   failed conversions.
+- Done: parse official class and Derma panel parent metadata, so method
+  completion, hover, and signature help follow the official class parent chain
+  instead of a hand-maintained inheritance table.
 - Done: add curated lightweight JSON override layers for known documentation
   corrections.
 - Done: expose `luxc gmod api update` through the main compiler CLI.
@@ -55,6 +58,9 @@
   patterns such as `LocalPlayer()` and `vgui.Create("DButton")`.
 - Done: broaden receiver type propagation through local aliases and simple
   function-return facts used by method completion, hover, and signature help.
+- Done: use official class and panel parent metadata for inherited method
+  completion and documentation, for example `DButton` resolving inherited
+  `Panel:SetSize`.
 
 ## Phase 5: Realm Availability Engine
 

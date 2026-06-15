@@ -88,13 +88,8 @@ fn run(args: Args) -> Result<UpdateSummary, String> {
                     classes
                         .entry(class.name.clone())
                         .and_modify(|existing| {
-                            if existing.summary.is_empty() {
-                                existing.summary = class.summary.clone();
-                            }
+                            merge_class_metadata(existing, &class);
                             existing.methods.extend(class.methods.clone());
-                            if existing.official_url.is_none() {
-                                existing.official_url = class.official_url.clone();
-                            }
                         })
                         .or_insert(class);
                 }
@@ -493,6 +488,13 @@ fn convert_page(args: &Args, list_item: &PageListItem, page: WikiPage) -> Conver
     let type_entries = parse_type_blocks(&page, &source);
     let type_structured = !type_entries.is_empty();
     converted.entries.extend(type_entries);
+    let type_classes = parse_type_class_blocks(&page, &source);
+    let type_class_structured = !type_classes.is_empty();
+    converted.classes.extend(type_classes);
+    let (panel_entries, panel_classes) = parse_panel_blocks(&page, &source);
+    let panel_structured = !panel_entries.is_empty() || !panel_classes.is_empty();
+    converted.entries.extend(panel_entries);
+    converted.classes.extend(panel_classes);
     let (function_entries, hooks) = parse_function_blocks(&page, &source);
     let function_structured = !function_entries.is_empty() || !hooks.is_empty();
     converted.entries.extend(function_entries);
@@ -507,8 +509,12 @@ fn convert_page(args: &Args, list_item: &PageListItem, page: WikiPage) -> Conver
         .entries
         .iter()
         .any(|entry| matches!(entry.kind, ApiKind::Struct | ApiKind::Field));
-    converted.structured =
-        type_structured || function_structured || enum_structured || structure_structured;
+    converted.structured = type_structured
+        || type_class_structured
+        || panel_structured
+        || function_structured
+        || enum_structured
+        || structure_structured;
 
     if converted.api_candidate
         && converted.entries.is_empty()
@@ -560,7 +566,7 @@ fn is_api_candidate(page: &WikiPage) -> bool {
                 | "realm-server"
                 | "realm-menu"
         )
-    }) || ["<function", "<enum", "<structure", "<type"]
+    }) || ["<function", "<enum", "<structure", "<type", "<panel"]
         .into_iter()
         .any(|needle| page.markup.contains(needle))
 }
@@ -604,6 +610,131 @@ fn parse_type_blocks(page: &WikiPage, source: &ApiSource) -> Vec<ApiEntry> {
         .collect()
 }
 
+fn parse_type_class_blocks(page: &WikiPage, source: &ApiSource) -> Vec<ClassEntry> {
+    tag_blocks(&page.markup, "type")
+        .into_iter()
+        .filter_map(|block| {
+            let attrs = attributes(&block.attrs);
+            let name = attrs.get("name")?.trim().to_string();
+            let is = attrs.get("is").map(String::as_str).unwrap_or_default();
+            if is != "class" {
+                return None;
+            }
+            let category = attrs
+                .get("category")
+                .map(String::as_str)
+                .unwrap_or_default();
+            let kind = if name.starts_with('D') && category == "panelfunc" {
+                ApiKind::Panel
+            } else {
+                ApiKind::Class
+            };
+            let summary_raw = first_tag_raw(&block.body, "summary").unwrap_or_default();
+            let summary = clean_markup(&summary_raw);
+            let parent = attrs
+                .get("parent")
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
+            Some(class_entry(
+                name,
+                kind,
+                parse_realm(None, &page.tags),
+                parent,
+                summary,
+                extract_named_sections(&summary_raw, "warning"),
+                extract_named_sections(&summary_raw, "note"),
+                parse_examples(&page.markup),
+                related_pages(&page.markup),
+                source,
+            ))
+        })
+        .collect()
+}
+
+fn parse_panel_blocks(page: &WikiPage, source: &ApiSource) -> (Vec<ApiEntry>, Vec<ClassEntry>) {
+    let mut entries = Vec::new();
+    let mut classes = Vec::new();
+    for block in tag_blocks(&page.markup, "panel") {
+        let name = page.address.trim().to_string();
+        if name.is_empty() {
+            continue;
+        }
+        let realm_raw = first_tag_raw(&block.body, "realm");
+        let realm = parse_realm(realm_raw.as_deref(), &page.tags);
+        let description_raw = first_tag_raw(&block.body, "description").unwrap_or_default();
+        let description_without_admonitions = remove_admonitions(&description_raw);
+        let description = clean_markup(&description_without_admonitions);
+        let warnings = extract_named_sections(&description_raw, "warning");
+        let notes = extract_named_sections(&description_raw, "note");
+        let parent = first_tag_raw(&block.body, "parent")
+            .map(|text| clean_markup(&text))
+            .filter(|text| !text.is_empty());
+        let examples = parse_examples(&page.markup);
+        let mut related = related_pages(&page.markup);
+        if let Some(parent) = &parent
+            && !related.iter().any(|item| item == parent)
+        {
+            related.push(parent.clone());
+        }
+        entries.push(ApiEntry {
+            path: name.clone(),
+            kind: ApiKind::Panel,
+            realm,
+            summary: summary_from(&description).if_empty(|| format!("Garry's Mod panel `{name}`.")),
+            description: paragraphs(&description),
+            signatures: Vec::new(),
+            warnings: warnings.clone(),
+            notes: notes.clone(),
+            examples: examples.clone(),
+            related: related.clone(),
+            official_url: Some(source.url.clone()),
+            source: Some(source.clone()),
+        });
+        classes.push(class_entry(
+            name,
+            ApiKind::Panel,
+            realm,
+            parent,
+            description,
+            warnings,
+            notes,
+            examples,
+            related,
+            source,
+        ));
+    }
+    (entries, classes)
+}
+
+fn class_entry(
+    name: String,
+    kind: ApiKind,
+    realm: ApiRealm,
+    parent: Option<String>,
+    description: String,
+    warnings: Vec<String>,
+    notes: Vec<String>,
+    examples: Vec<ApiExample>,
+    related: Vec<String>,
+    source: &ApiSource,
+) -> ClassEntry {
+    ClassEntry {
+        name: name.clone(),
+        summary: summary_from(&description).if_empty(|| format!("Garry's Mod class `{name}`.")),
+        realm: Some(realm),
+        parent,
+        kind: Some(kind),
+        description: paragraphs(&description),
+        methods: Vec::new(),
+        warnings,
+        notes,
+        examples,
+        related,
+        official_url: Some(source.url.clone()),
+        source: Some(source.clone()),
+    }
+}
+
 fn parse_function_blocks(page: &WikiPage, source: &ApiSource) -> (Vec<ApiEntry>, Vec<HookEntry>) {
     let mut entries = Vec::new();
     let mut hooks = Vec::new();
@@ -631,7 +762,7 @@ fn parse_function_blocks(page: &WikiPage, source: &ApiSource) -> (Vec<ApiEntry>,
         };
         let kind = match function_type {
             "hook" => ApiKind::Hook,
-            "classfunc" => ApiKind::Method,
+            "classfunc" | "panelfunc" => ApiKind::Method,
             _ if parent == "Global" => ApiKind::Function,
             _ => ApiKind::Function,
         };
@@ -842,7 +973,10 @@ fn function_path(parent: &str, name: &str, function_type: &str, address: &str) -
     if parent == "Global" || parent.is_empty() {
         return name.to_string();
     }
-    if address.contains(':') || function_type == "classfunc" || function_type == "hook" {
+    if address.contains(':')
+        || matches!(function_type, "classfunc" | "panelfunc")
+        || function_type == "hook"
+    {
         format!("{parent}:{name}")
     } else {
         format!("{parent}.{name}")
@@ -1017,12 +1151,56 @@ fn attach_methods_to_classes(entries: &mut [ApiEntry], classes: &mut BTreeMap<St
                 summary: format!(
                     "Garry's Mod class `{class_name}` generated from official method pages."
                 ),
+                realm: None,
+                parent: None,
+                kind: Some(ApiKind::Class),
+                description: Vec::new(),
                 methods: Vec::new(),
+                warnings: Vec::new(),
+                notes: Vec::new(),
+                examples: Vec::new(),
+                related: Vec::new(),
                 official_url: Some(format!("{DEFAULT_BASE_URL}/{class_name}")),
                 source: None,
             })
             .methods
             .push(entry.clone());
+    }
+}
+
+fn merge_class_metadata(existing: &mut ClassEntry, incoming: &ClassEntry) {
+    if existing.summary.is_empty() || existing.summary.starts_with("Garry's Mod class `") {
+        existing.summary = incoming.summary.clone();
+    }
+    if existing.realm.is_none() {
+        existing.realm = incoming.realm;
+    }
+    if existing.parent.is_none() {
+        existing.parent = incoming.parent.clone();
+    }
+    if existing.kind.is_none() {
+        existing.kind = incoming.kind;
+    }
+    if existing.description.is_empty() {
+        existing.description = incoming.description.clone();
+    }
+    if existing.warnings.is_empty() {
+        existing.warnings = incoming.warnings.clone();
+    }
+    if existing.notes.is_empty() {
+        existing.notes = incoming.notes.clone();
+    }
+    if existing.examples.is_empty() {
+        existing.examples = incoming.examples.clone();
+    }
+    if existing.related.is_empty() {
+        existing.related = incoming.related.clone();
+    }
+    if existing.official_url.is_none() {
+        existing.official_url = incoming.official_url.clone();
+    }
+    if existing.source.is_none() {
+        existing.source = incoming.source.clone();
     }
 }
 
@@ -1410,6 +1588,29 @@ mod tests {
         assert_eq!(entries[0].signatures[0].parameters.len(), 2);
         assert_eq!(entries[0].examples[0].code, "net.Start(\"x\")");
         assert_eq!(entries[0].warnings[0], "Must be finished.");
+    }
+
+    #[test]
+    fn parses_panel_functions_as_methods() {
+        let page = WikiPage {
+            title: "DButton:SetImage".into(),
+            tags: "function method member realm-client realm-menu".into(),
+            address: "DButton:SetImage".into(),
+            update_count: Some(1),
+            markup: r#"
+<function name="SetImage" parent="DButton" type="panelfunc">
+  <description>Sets an image.</description>
+  <realm>Client and Menu</realm>
+  <args><arg name="img" type="string" default="nil">Image path.</arg></args>
+</function>
+"#
+            .into(),
+        };
+        let (entries, hooks) = parse_function_blocks(&page, &source());
+        assert!(hooks.is_empty());
+        assert_eq!(entries[0].path, "DButton:SetImage");
+        assert_eq!(entries[0].kind, ApiKind::Method);
+        assert_eq!(entries[0].realm, ApiRealm::Client);
     }
 
     #[test]

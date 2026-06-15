@@ -39,10 +39,13 @@ The Phase 1, Phase 2, and core Phase 3 foundation is in place:
   `extern` suggestions for unknown external symbols.
 - `gmod-api-db` now has a generated offline database built from the official
   Facepunch Wiki JSON page list and per-page markup.
-- The generated database currently covers 6,335 official pages and 6,121 API
-  candidate pages. The latest bundled manifest has 5,991 structured conversions,
-  130 fallback documentation pages, 10,022 entries, 497 hooks, 151 classes, and
+- The generated database currently covers 6,335 official pages and 6,122 API
+  candidate pages. The latest bundled manifest has 6,121 structured conversions,
+  1 fallback documentation page, 10,023 entries, 497 hooks, 186 classes, and
   zero failed page conversions.
+- Official class and Derma panel parent metadata is parsed into the database, so
+  inherited method completion and docs follow the official Facepunch markup
+  instead of a hand-maintained type table.
 - Compiler realm checks and LSP hover, completion, signature help, and GMod docs
   code actions use the same `gmod-api-db` query interface.
 
@@ -95,6 +98,8 @@ Lux editor support must meet the GLua developer expectation:
 - signature help with parameter documentation
 - class and method completion for `Player:`, `Entity:`, `Panel:`, and related
   types
+- inherited Derma panel methods from official parent metadata, such as
+  `DButton` resolving `Panel:SetSize`
 - official documentation links
 - real-time compiler and lint diagnostics
 

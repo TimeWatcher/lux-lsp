@@ -59,7 +59,7 @@ fn server_capabilities() -> InitializeResult {
             hover_provider: Some(lsp_types::HoverProviderCapability::Simple(true)),
             completion_provider: Some(CompletionOptions {
                 resolve_provider: Some(false),
-                trigger_characters: Some(vec![".".into(), "{".into(), "\"".into()]),
+                trigger_characters: Some(vec![".".into(), ":".into(), "{".into(), "\"".into()]),
                 all_commit_characters: None,
                 work_done_progress_options: WorkDoneProgressOptions::default(),
                 completion_item: None,
@@ -1041,9 +1041,12 @@ fn external_api_hover_markdown(
     let file = analysis.file_by_path(path)?;
     if let Some(method_path) = method_path_at_offset(&file.text, offset) {
         let facts = GmodTypeFacts::from_text(&file.text);
-        if let Some(resolved_path) = resolve_typed_method_path(&facts, &method_path)
+        if let Some(resolved_path) = resolve_typed_method_path(api, &facts, &method_path)
             && let Some(entry) = api.entry(&resolved_path)
         {
+            return Some(entry_markdown(entry));
+        }
+        if let Some(entry) = api.entry(&method_path) {
             return Some(entry_markdown(entry));
         }
     }
@@ -1098,7 +1101,8 @@ fn signature_help_at(
     }
     let call_path = call_path_before_cursor(text)?;
     let facts = GmodTypeFacts::from_text(&file.text);
-    let resolved_call_path = resolve_typed_method_path(&facts, &call_path).unwrap_or(call_path);
+    let resolved_call_path =
+        resolve_typed_method_path(api, &facts, &call_path).unwrap_or(call_path);
     let entry = api.entry(&resolved_call_path)?;
     entry.signatures.first().map(signature_help_from_signature)
 }
@@ -1139,14 +1143,18 @@ fn method_path_at_offset(text: &str, offset: usize) -> Option<String> {
     path.contains(':').then_some(path)
 }
 
-fn resolve_typed_method_path(facts: &GmodTypeFacts, path: &str) -> Option<String> {
+fn resolve_typed_method_path(api: &ApiIndex, facts: &GmodTypeFacts, path: &str) -> Option<String> {
     let (receiver, method) = path.split_once(':')?;
     if receiver.is_empty() || method.is_empty() {
         return None;
     }
-    facts
-        .receiver_class(receiver)
-        .map(|class_name| format!("{class_name}:{method}"))
+    if let Some(class_name) = facts.receiver_class(receiver)
+        && let Some(entry) = api.method_for_class_or_base(&class_name, method)
+    {
+        return Some(entry.path.clone());
+    }
+    api.method_for_class_or_base(receiver, method)
+        .map(|entry| entry.path.clone())
 }
 
 fn signature_help_from_signature(signature: &gmod_api_db::ApiSignature) -> SignatureHelp {
@@ -1278,7 +1286,7 @@ fn api_completion_candidates(
             facts.receiver_class(receiver)
         }) {
             let candidates = api
-                .methods_for_class(&class_name)
+                .methods_for_class_and_bases(&class_name)
                 .into_iter()
                 .map(api_entry_candidate)
                 .collect::<Vec<_>>();
@@ -1287,7 +1295,7 @@ fn api_completion_candidates(
             }
         }
         let candidates = api
-            .methods_for_class(receiver)
+            .methods_for_class_and_bases(receiver)
             .into_iter()
             .map(api_entry_candidate)
             .collect::<Vec<_>>();
@@ -1566,6 +1574,21 @@ mod tests {
     }
 
     #[test]
+    fn api_completion_uses_official_class_parent_chain_for_panels() {
+        let api = ApiIndex::bundled();
+        let text = "local button = vgui.Create(\"DButton\")\nbutton:";
+        let labels = api_completion_candidates(&api, "button:", Some(text))
+            .into_iter()
+            .map(|candidate| candidate.label)
+            .collect::<Vec<_>>();
+        assert!(
+            labels.iter().any(|label| label == "SetImage"),
+            "{labels:#?}"
+        );
+        assert!(labels.iter().any(|label| label == "SetSize"), "{labels:#?}");
+    }
+
+    #[test]
     fn signature_help_uses_receiver_type_facts_for_method_calls() {
         let api = ApiIndex::bundled();
         let file = SourceFile::new(0, None, "local ply = LocalPlayer()\nply:Nick(");
@@ -1574,15 +1597,42 @@ mod tests {
     }
 
     #[test]
+    fn signature_help_uses_official_parent_chain_for_panel_methods() {
+        let api = ApiIndex::bundled();
+        let file = SourceFile::new(
+            0,
+            None,
+            "local button = vgui.Create(\"DButton\")\nbutton:SetSize(",
+        );
+        let help = signature_help_at(&file, &api, file.text.len()).expect("signature help");
+        assert_eq!(help.signatures[0].label, "Panel:SetSize(width, height)");
+    }
+
+    #[test]
     fn hover_method_path_uses_receiver_type_facts() {
+        let api = ApiIndex::bundled();
         let text = "local ply = LocalPlayer()\nply:Nick()";
         let offset = text.find("Nick").expect("offset");
         let path = method_path_at_offset(text, offset).expect("method path");
         let facts = GmodTypeFacts::from_text(text);
         assert_eq!(path, "ply:Nick");
         assert_eq!(
-            resolve_typed_method_path(&facts, &path),
+            resolve_typed_method_path(&api, &facts, &path),
             Some("Player:Nick".into())
+        );
+    }
+
+    #[test]
+    fn hover_method_path_uses_official_parent_chain_for_panels() {
+        let api = ApiIndex::bundled();
+        let text = "local button = vgui.Create(\"DButton\")\nbutton:SetSize(24, 24)";
+        let offset = text.find("SetSize").expect("offset");
+        let path = method_path_at_offset(text, offset).expect("method path");
+        let facts = GmodTypeFacts::from_text(text);
+        assert_eq!(path, "button:SetSize");
+        assert_eq!(
+            resolve_typed_method_path(&api, &facts, &path),
+            Some("Panel:SetSize".into())
         );
     }
 

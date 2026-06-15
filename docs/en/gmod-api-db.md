@@ -79,9 +79,9 @@ Default rules:
   structured conversions, fallback documentation pages, skipped pages, and
   failed pages.
 
-The current bundled manifest covers 6,335 official pages and 6,121 API candidate
-pages. It has 5,991 structured conversions, 130 fallback documentation pages,
-10,022 entries, 497 hooks, 151 classes, and zero failed conversions.
+The current bundled manifest covers 6,335 official pages and 6,122 API candidate
+pages. It has 6,121 structured conversions, 1 fallback documentation page,
+10,023 entries, 497 hooks, 186 classes, and zero failed conversions.
 
 Override files are lightweight JSON patches. They do not need to repeat the full
 generated database metadata:
@@ -121,6 +121,24 @@ ApiSymbol {
   doc_revision?: string
 }
 ```
+
+Class and panel metadata is also generated from official markup, including
+`<type parent="...">` and `<panel><parent>...</parent></panel>`:
+
+```ts
+ClassSymbol {
+  name: string
+  kind: "class" | "panel"
+  realm?: "shared" | "server" | "client" | "menu"
+  parent?: string
+  doc: DocPage
+  methods: ApiSymbol[]
+  docs_url: string
+}
+```
+
+The parent chain must come from the official generated data. Lux may not ship a
+hand-maintained inheritance table as the primary source.
 
 Documentation must not be compressed into a one-line summary:
 
@@ -173,6 +191,27 @@ net.Broadcast
 
 The same rule is used by compiler realm checks, LSP completion filtering, hover,
 and signature help.
+
+## Class And Panel Parent Chains
+
+GMod object documentation is not flat. Player, Weapon, NPC, Vehicle, Derma
+panels, and many other API surfaces inherit methods from a documented parent.
+The generated database must preserve that parent metadata and expose shared
+queries:
+
+```text
+method_for_class_or_base("DButton", "SetSize")
+  -> DButton
+  -> DLabel
+  -> Label
+  -> Panel
+  -> Panel:SetSize
+```
+
+LSP completion, hover, and signature help must use the same class query API.
+For example, `local button = vgui.Create("DButton")` followed by `button:`
+should include both DButton methods such as `SetImage` and inherited Panel
+methods such as `SetSize` and `Dock`.
 
 ## Extern
 

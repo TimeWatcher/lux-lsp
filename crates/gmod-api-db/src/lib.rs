@@ -165,7 +165,23 @@ pub struct ClassEntry {
     pub name: String,
     pub summary: String,
     #[serde(default)]
+    pub realm: Option<ApiRealm>,
+    #[serde(default)]
+    pub parent: Option<String>,
+    #[serde(default)]
+    pub kind: Option<ApiKind>,
+    #[serde(default)]
+    pub description: Vec<String>,
+    #[serde(default)]
     pub methods: Vec<ApiEntry>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+    #[serde(default)]
+    pub notes: Vec<String>,
+    #[serde(default)]
+    pub examples: Vec<ApiExample>,
+    #[serde(default)]
+    pub related: Vec<String>,
     #[serde(default)]
     pub official_url: Option<String>,
     #[serde(default)]
@@ -388,8 +404,66 @@ impl ApiIndex {
             .collect()
     }
 
+    pub fn methods_for_class_and_bases(&self, class_name: &str) -> Vec<&ApiEntry> {
+        let mut seen = BTreeMap::<String, ()>::new();
+        let mut methods = Vec::new();
+        for class_name in self.class_lineage_names(class_name) {
+            for method in self.methods_for_class(&class_name) {
+                let method_name = method
+                    .path
+                    .rsplit(':')
+                    .next()
+                    .unwrap_or(method.path.as_str())
+                    .to_string();
+                if seen.insert(method_name, ()).is_none() {
+                    methods.push(method);
+                }
+            }
+        }
+        methods
+    }
+
+    pub fn method_for_class_or_base(
+        &self,
+        class_name: &str,
+        method_name: &str,
+    ) -> Option<&ApiEntry> {
+        let method_name = method_name.rsplit(':').next().unwrap_or(method_name);
+        for class_name in self.class_lineage_names(class_name) {
+            let path = format!("{class_name}:{method_name}");
+            if let Some(entry) = self.entry(path)
+                && entry.kind == ApiKind::Method
+            {
+                return Some(entry);
+            }
+        }
+        None
+    }
+
     pub fn class_names(&self) -> Vec<&str> {
         self.classes.keys().map(String::as_str).collect()
+    }
+
+    fn class_lineage_names(&self, class_name: &str) -> Vec<String> {
+        let mut names = Vec::new();
+        let mut seen = BTreeMap::<String, ()>::new();
+        let mut current = class_name.trim().to_string();
+        while !current.is_empty() && seen.insert(current.clone(), ()).is_none() {
+            names.push(current.clone());
+            let Some(class) = self.class(&current) else {
+                break;
+            };
+            let Some(parent) = class
+                .parent
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            else {
+                break;
+            };
+            current = parent.to_string();
+        }
+        names
     }
 }
 
@@ -615,5 +689,17 @@ mod tests {
         assert!(index.entry("net.Broadcast").is_some());
         assert!(index.hook("PlayerInitialSpawn").is_some());
         assert!(!index.methods_for_class("Player").is_empty());
+        assert_eq!(
+            index
+                .class("DButton")
+                .and_then(|class| class.parent.as_deref()),
+            Some("DLabel")
+        );
+        assert_eq!(
+            index
+                .method_for_class_or_base("DButton", "SetSize")
+                .map(|entry| entry.path.as_str()),
+            Some("Panel:SetSize")
+        );
     }
 }
