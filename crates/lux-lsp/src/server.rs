@@ -1517,10 +1517,7 @@ fn api_completion_candidates(
 ) -> Vec<CompletionCandidate> {
     if prefix.ends_with(':') {
         let receiver = prefix.trim_end_matches(':');
-        if let Some(class_name) = file_text.and_then(|text| {
-            let facts = GmodTypeFacts::from_text(text);
-            facts.receiver_class(receiver)
-        }) {
+        if let Some(class_name) = file_text.and_then(|text| infer_receiver_class(text, receiver)) {
             let candidates = api
                 .methods_for_class_and_bases(&class_name)
                 .into_iter()
