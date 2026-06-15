@@ -38,6 +38,9 @@ cargo test
 cargo run -p lux-lsp
 ```
 
+需要排查文档变更和 diagnostics 生命周期时，可以在启动 server 前设置
+`LUX_LSP_DEBUG=1` 输出调试日志。
+
 构建和打包 VS Code 扩展：
 
 ```powershell

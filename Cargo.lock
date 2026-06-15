@@ -492,6 +492,7 @@ dependencies = [
 name = "lux-lsp"
 version = "0.1.0"
 dependencies = [
+ "crossbeam-channel",
  "gmod-api-db",
  "lsp-server",
  "lsp-types",

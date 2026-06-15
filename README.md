@@ -70,6 +70,9 @@ cargo test
 cargo run -p lux-lsp
 ```
 
+Set `LUX_LSP_DEBUG=1` before launching the server when you need raw document
+change and diagnostics lifecycle logs.
+
 Build and package the VS Code extension:
 
 ```powershell

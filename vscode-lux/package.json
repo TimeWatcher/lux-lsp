@@ -136,7 +136,8 @@
       "[lux]": {
         "editor.defaultFormatter": "timewatcher.lux-vscode",
         "editor.formatOnSave": true,
-        "editor.semanticHighlighting.enabled": true
+        "editor.semanticHighlighting.enabled": true,
+        "editor.wordBasedSuggestions": "off"
       }
     },
     "configuration": {

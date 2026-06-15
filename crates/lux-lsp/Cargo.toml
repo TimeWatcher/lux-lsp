@@ -6,6 +6,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+crossbeam-channel.workspace = true
 gmod-api-db.workspace = true
 luxc.workspace = true
 lsp-server.workspace = true

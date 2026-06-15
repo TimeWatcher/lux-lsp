@@ -6,13 +6,6 @@
     ],
     "description": "Export a module-scope binding with an optional realm."
   },
-  "Import Specifiers": {
-    "prefix": "import",
-    "body": [
-      "import { ${1:name} } from \"${2:module}\""
-    ],
-    "description": "Import named exports from another Lux module."
-  },
   "Client Function": {
     "prefix": "clientfn",
     "body": [

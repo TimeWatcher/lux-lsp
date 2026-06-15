@@ -457,6 +457,17 @@ impl ApiIndex {
             .collect()
     }
 
+    pub fn completions_for_member_prefix(&self, prefix: &str) -> Vec<&ApiEntry> {
+        let Some(normalized) = normalize_member_prefix(prefix) else {
+            return Vec::new();
+        };
+        self.entries
+            .iter()
+            .filter(|(path, _)| path.starts_with(&normalized))
+            .map(|(_, entry)| entry)
+            .collect()
+    }
+
     pub fn roots(&self) -> Vec<&ApiEntry> {
         self.entries
             .values()
@@ -553,20 +564,40 @@ pub fn normalize_path(path: &str) -> String {
         .join(".")
 }
 
+fn normalize_member_prefix(prefix: &str) -> Option<String> {
+    let prefix = prefix.trim();
+    let delimiter = prefix
+        .chars()
+        .last()
+        .filter(|delimiter| matches!(delimiter, '.' | ':'))?;
+    let base = &prefix[..prefix.len() - delimiter.len_utf8()];
+    let base = normalize_path(base);
+    if base.is_empty() {
+        None
+    } else {
+        Some(format!("{base}{delimiter}"))
+    }
+}
+
 pub fn entry_markdown(entry: &ApiEntry) -> String {
     let mut out = String::new();
-    out.push_str("### ");
+    out.push_str(&realm_badge(entry.realm));
+    if api_entry_is_deprecated(entry) {
+        out.push_str(" `DEPRECATED`");
+    }
+    out.push_str("\n\n## ");
     out.push_str(&entry.path);
     out.push_str("\n\n");
-    out.push_str(entry.summary.trim());
+    append_summary(&mut out, &entry.summary);
     out.push_str("\n\n");
-    out.push_str("**Kind:** ");
+    out.push_str("| Kind | Realm |\n| --- | --- |\n| `");
     out.push_str(entry.kind.label());
-    out.push_str("  \n**Realm:** ");
-    out.push_str(entry.realm.as_str());
+    out.push_str("` | ");
+    out.push_str(&realm_inline(entry.realm));
+    out.push_str(" |");
 
     for signature in &entry.signatures {
-        out.push_str("\n\n```lua\n");
+        out.push_str("\n\n---\n\n**Signature**\n\n```lua\n");
         out.push_str(&signature.label);
         out.push_str("\n```");
         append_parameters(&mut out, signature);
@@ -575,34 +606,26 @@ pub fn entry_markdown(entry: &ApiEntry) -> String {
     append_sections(&mut out, &entry.warnings, "Warnings");
     append_sections(&mut out, &entry.notes, "Notes");
     append_examples(&mut out, &entry.examples);
-    if !entry.related.is_empty() {
-        out.push_str("\n\n**Related:** ");
-        out.push_str(
-            &entry
-                .related
-                .iter()
-                .map(|item| format!("`{item}`"))
-                .collect::<Vec<_>>()
-                .join(", "),
-        );
-    }
-    if let Some(url) = &entry.official_url {
-        out.push_str("\n\n[Official documentation](");
-        out.push_str(url);
-        out.push(')');
-    }
+    append_related(&mut out, &entry.related);
+    append_links(
+        &mut out,
+        entry.official_url.as_deref(),
+        entry.source.as_ref(),
+    );
     out
 }
 
 pub fn hook_markdown(hook: &HookEntry) -> String {
     let mut out = String::new();
-    out.push_str("### hook: ");
+    out.push_str(&realm_badge(hook.realm));
+    out.push_str(" `HOOK`\n\n## hook: ");
     out.push_str(&hook.name);
     out.push_str("\n\n");
-    out.push_str(hook.summary.trim());
-    out.push_str("\n\n**Realm:** ");
-    out.push_str(hook.realm.as_str());
-    out.push_str("\n\n```lua\n");
+    append_summary(&mut out, &hook.summary);
+    out.push_str("\n\n| Kind | Realm |\n| --- | --- |\n| `hook` | ");
+    out.push_str(&realm_inline(hook.realm));
+    out.push_str(" |");
+    out.push_str("\n\n---\n\n**Callback**\n\n```lua\n");
     out.push_str(&hook.callback.label);
     out.push_str("\n```");
     append_parameters(&mut out, &hook.callback);
@@ -610,50 +633,54 @@ pub fn hook_markdown(hook: &HookEntry) -> String {
     append_sections(&mut out, &hook.warnings, "Warnings");
     append_sections(&mut out, &hook.notes, "Notes");
     append_examples(&mut out, &hook.examples);
-    if let Some(url) = &hook.official_url {
-        out.push_str("\n\n[Official documentation](");
-        out.push_str(url);
-        out.push(')');
-    }
+    append_links(&mut out, hook.official_url.as_deref(), hook.source.as_ref());
     out
 }
 
 fn append_parameters(out: &mut String, signature: &ApiSignature) {
     if !signature.parameters.is_empty() {
-        out.push_str("\n\n**Parameters**");
+        out.push_str("\n\n**Parameters**\n\n");
+        out.push_str("| Name | Type | Notes |\n| --- | --- | --- |");
         for parameter in &signature.parameters {
-            out.push_str("\n- `");
+            out.push_str("\n| `");
             out.push_str(&parameter.name);
-            out.push_str("`: ");
+            out.push_str("` | `");
             out.push_str(&parameter.ty);
+            out.push_str("` | ");
+            let mut notes = Vec::new();
             if parameter.optional {
-                out.push_str(", optional");
+                notes.push("optional".to_string());
             }
             if let Some(default) = &parameter.default {
-                out.push_str(", default `");
-                out.push_str(default);
-                out.push('`');
+                notes.push(format!("default `{default}`"));
             }
             if !parameter.description.is_empty() {
-                out.push_str(" - ");
-                out.push_str(&parameter.description);
+                notes.push(clean_table_cell(&parameter.description));
             }
+            out.push_str(&notes.join("; "));
+            out.push_str(" |");
         }
     }
     if !signature.returns.is_empty() {
-        out.push_str("\n\n**Returns**");
+        out.push_str("\n\n**Returns**\n\n");
+        out.push_str("| Type | Name | Description |\n| --- | --- | --- |");
         for return_value in &signature.returns {
-            out.push_str("\n- ");
+            out.push_str("\n| ");
+            out.push_str(&type_icon(&return_value.ty));
+            out.push(' ');
+            out.push('`');
+            out.push_str(&return_value.ty);
+            out.push_str("` | ");
             if !return_value.name.is_empty() {
                 out.push('`');
                 out.push_str(&return_value.name);
-                out.push_str("`: ");
+                out.push('`');
             }
-            out.push_str(&return_value.ty);
+            out.push_str(" | ");
             if !return_value.description.is_empty() {
-                out.push_str(" - ");
-                out.push_str(&return_value.description);
+                out.push_str(&clean_table_cell(&return_value.description));
             }
+            out.push_str(" |");
         }
     }
 }
@@ -662,12 +689,22 @@ fn append_sections(out: &mut String, sections: &[String], title: &str) {
     if sections.is_empty() {
         return;
     }
-    out.push_str("\n\n**");
+    out.push_str("\n\n---\n\n**");
     out.push_str(title);
     out.push_str("**");
     for section in sections {
         out.push_str("\n\n");
-        out.push_str(section.trim());
+        match title {
+            "Warnings" => {
+                out.push_str("> **Warning:** ");
+                out.push_str(section.trim());
+            }
+            "Notes" => {
+                out.push_str("> **Note:** ");
+                out.push_str(section.trim());
+            }
+            _ => out.push_str(section.trim()),
+        }
     }
 }
 
@@ -675,11 +712,13 @@ fn append_examples(out: &mut String, examples: &[ApiExample]) {
     if examples.is_empty() {
         return;
     }
-    out.push_str("\n\n**Examples**");
+    out.push_str("\n\n---\n\n**Examples**");
     for example in examples {
         out.push_str("\n\n");
         if !example.title.is_empty() {
+            out.push_str("**");
             out.push_str(&example.title);
+            out.push_str("**");
             out.push_str("\n\n");
         }
         if !example.description.is_empty() {
@@ -697,6 +736,98 @@ fn append_examples(out: &mut String, examples: &[ApiExample]) {
             out.push_str("\n```");
         }
     }
+}
+
+fn append_summary(out: &mut String, summary: &str) {
+    let summary = summary.trim();
+    if !summary.is_empty() {
+        out.push_str(summary);
+    }
+}
+
+fn append_related(out: &mut String, related: &[String]) {
+    if related.is_empty() {
+        return;
+    }
+    out.push_str("\n\n---\n\n**Related**\n\n");
+    out.push_str(
+        &related
+            .iter()
+            .map(|item| format!("`{item}`"))
+            .collect::<Vec<_>>()
+            .join("  "),
+    );
+}
+
+fn append_links(out: &mut String, official_url: Option<&str>, source: Option<&ApiSource>) {
+    let mut links = Vec::new();
+    if let Some(url) = official_url {
+        links.push(format!("[📘 Official documentation]({url})"));
+    }
+    if let Some(source) = source {
+        links.push(format!("[🔎 View source]({})", source.url));
+    }
+    if !links.is_empty() {
+        out.push_str("\n\n---\n\n");
+        out.push_str(&links.join(" | "));
+    }
+}
+
+fn realm_badge(realm: ApiRealm) -> String {
+    let (id, label) = match realm {
+        ApiRealm::Client => ("c", "CLIENT"),
+        ApiRealm::Server => ("s", "SERVER"),
+        ApiRealm::Shared => ("cs", "CLIENT/SERVER"),
+        ApiRealm::Menu => ("m", "MENU"),
+    };
+    format!("![{label}](lux-resource://realm/{id}.svg) **{label}**")
+}
+
+fn realm_inline(realm: ApiRealm) -> String {
+    match realm {
+        ApiRealm::Client => "`client`",
+        ApiRealm::Server => "`server`",
+        ApiRealm::Shared => "`shared`",
+        ApiRealm::Menu => "`menu`",
+    }
+    .to_string()
+}
+
+fn type_icon(ty: &str) -> &'static str {
+    match ty.to_ascii_lowercase().as_str() {
+        "number" => "#",
+        "string" => "\"",
+        "bool" | "boolean" => "✓",
+        "function" => "ƒ",
+        "table" | "userdata" => "{}",
+        "entity" | "ent" | "player" | "ply" | "panel" => "◇",
+        "nil" => "∅",
+        _ => "•",
+    }
+}
+
+fn clean_table_cell(value: &str) -> String {
+    value
+        .trim()
+        .trim_start_matches("\">")
+        .trim_start_matches('>')
+        .trim()
+        .replace('\n', "<br>")
+        .replace('|', "\\|")
+}
+
+fn api_entry_is_deprecated(entry: &ApiEntry) -> bool {
+    let contains_deprecated = |value: &str| value.to_ascii_lowercase().contains("deprecated");
+    contains_deprecated(&entry.summary)
+        || entry
+            .warnings
+            .iter()
+            .any(|value| contains_deprecated(value))
+        || entry.notes.iter().any(|value| contains_deprecated(value))
+        || entry
+            .source
+            .as_ref()
+            .is_some_and(|source| contains_deprecated(&source.tags))
 }
 
 fn bundled_database_text() -> &'static str {
@@ -728,9 +859,62 @@ mod tests {
         let index = ApiIndex::fixture_minimal();
         let entry = index.entry("net.Start").expect("net.Start");
         let markdown = entry_markdown(entry);
+        assert!(
+            markdown.contains("lux-resource://realm/cs.svg"),
+            "{markdown}"
+        );
+        assert!(!markdown.contains("data:image/svg+xml"), "{markdown}");
         assert!(markdown.contains("Parameters"));
         assert!(markdown.contains("Examples"));
         assert!(markdown.contains("Official documentation"));
+        assert!(!markdown.contains("$("), "{markdown}");
+    }
+
+    #[test]
+    fn markdown_sanitizes_table_cells_for_hover_renderer() {
+        let index = ApiIndex::bundled();
+        let entry = index.entry("player.GetAll").expect("player.GetAll");
+        let markdown = entry_markdown(entry);
+        assert!(!markdown.contains("$("), "{markdown}");
+        assert!(!markdown.contains("\">All Players"), "{markdown}");
+        assert!(
+            markdown.contains("All Players currently in the server."),
+            "{markdown}"
+        );
+    }
+
+    #[test]
+    fn member_prefix_completion_keeps_delimiter_boundary() {
+        let index = ApiIndex::bundled();
+        let paths = index
+            .completions_for_member_prefix("player.")
+            .into_iter()
+            .map(|entry| entry.path.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(paths.iter().any(|path| *path == "player.GetAll"), "{paths:#?}");
+        assert!(!paths.iter().any(|path| *path == "player"), "{paths:#?}");
+        assert!(
+            !paths.iter().any(|path| *path == "player_manager"),
+            "{paths:#?}"
+        );
+        assert!(
+            paths.iter().all(|path| path.starts_with("player.")),
+            "{paths:#?}"
+        );
+    }
+
+    #[test]
+    fn markdown_links_to_source_when_available() {
+        let index = ApiIndex::bundled();
+        let entry = index
+            .database()
+            .entries
+            .iter()
+            .find(|entry| entry.source.is_some())
+            .expect("bundled API entry with source metadata");
+        let markdown = entry_markdown(entry);
+        assert!(markdown.contains("View source"), "{markdown}");
     }
 
     #[test]
@@ -751,8 +935,7 @@ mod tests {
             .as_ref()
             .expect("bundled database must include coverage metadata");
         assert_eq!(
-            database.generated_from,
-            "Facepunch Garry's Mod Wiki JSON",
+            database.generated_from, "Facepunch Garry's Mod Wiki JSON",
             "the bundled database must be generated from official Facepunch JSON"
         );
         assert_eq!(coverage.source_url, crate::OFFICIAL_PAGELIST_URL);

@@ -4,6 +4,7 @@ import * as vscode from "vscode";
 import {
   LanguageClient,
   LanguageClientOptions,
+  Middleware,
   ServerOptions,
   Trace
 } from "vscode-languageclient/node";
@@ -97,6 +98,7 @@ async function startLanguageServer(context: vscode.ExtensionContext): Promise<vo
         vscode.workspace.createFileSystemWatcher("**/lux.toml")
       ]
     },
+    middleware: markdownResourceMiddleware(context),
     outputChannel: output,
     revealOutputChannelOn: 4
   };
@@ -111,6 +113,95 @@ async function startLanguageServer(context: vscode.ExtensionContext): Promise<vo
     output.appendLine(`failed to start Lux language server: ${message}`);
     vscode.window.showErrorMessage(`Failed to start Lux language server: ${message}`);
   }
+}
+
+function markdownResourceMiddleware(context: vscode.ExtensionContext): Middleware {
+  return {
+    async provideHover(document, position, token, next) {
+      const hover = await next(document, position, token);
+      rewriteHoverMarkdownResources(context, hover);
+      return hover;
+    },
+    async provideCompletionItem(document, position, contextArg, token, next) {
+      const result = await next(document, position, contextArg, token);
+      rewriteCompletionMarkdownResources(context, result);
+      return result;
+    },
+    async resolveCompletionItem(item, token, next) {
+      const resolved = await next(item, token);
+      rewriteCompletionItemMarkdownResources(context, resolved);
+      return resolved;
+    }
+  };
+}
+
+function rewriteHoverMarkdownResources(context: vscode.ExtensionContext, hover: vscode.Hover | undefined | null): void {
+  if (!hover) {
+    return;
+  }
+  for (let index = 0; index < hover.contents.length; index += 1) {
+    hover.contents[index] = rewriteMarkdownResourceValue(context, hover.contents[index]) as typeof hover.contents[number];
+  }
+}
+
+function rewriteCompletionMarkdownResources(
+  context: vscode.ExtensionContext,
+  result: vscode.CompletionItem[] | vscode.CompletionList | undefined | null
+): void {
+  if (!result) {
+    return;
+  }
+  const items = Array.isArray(result) ? result : result.items;
+  for (const item of items) {
+    rewriteCompletionItemMarkdownResources(context, item);
+  }
+}
+
+function rewriteCompletionItemMarkdownResources(context: vscode.ExtensionContext, item: vscode.CompletionItem | undefined | null): void {
+  if (!item) {
+    return;
+  }
+  const documentation = rewriteMarkdownResourceValue(context, item.documentation);
+  if (documentation !== undefined) {
+    item.documentation = documentation as string | vscode.MarkdownString;
+  }
+}
+
+function rewriteMarkdownResourceValue(context: vscode.ExtensionContext, value: unknown): unknown {
+  let markdown: vscode.MarkdownString | undefined;
+  if (value instanceof vscode.MarkdownString) {
+    markdown = value;
+  } else if (typeof value === "string") {
+    markdown = new vscode.MarkdownString(value);
+  } else if (isMarkupContentLike(value)) {
+    markdown = new vscode.MarkdownString(value.value);
+  }
+  if (!markdown) {
+    return value;
+  }
+  markdown.value = rewriteResourceUris(context, markdown.value);
+  markdown.supportThemeIcons = true;
+  markdown.supportHtml = true;
+  markdown.isTrusted = true;
+  return markdown;
+}
+
+function isMarkupContentLike(value: unknown): value is { value: string } {
+  return typeof value === "object"
+    && value !== null
+    && "value" in value
+    && typeof (value as { value?: unknown }).value === "string";
+}
+
+function rewriteResourceUris(context: vscode.ExtensionContext, markdown: string): string {
+  return markdown.replace(/lux-resource:\/\/realm\/([a-z]+)\.svg/g, (_match, id: string) => {
+    const uri = vscode.Uri.joinPath(context.extensionUri, "resources", "icons", `realm_${id}.svg`);
+    return markdownUri(uri);
+  });
+}
+
+function markdownUri(uri: vscode.Uri): string {
+  return uri.toString().replace(/[\[\]]/g, "\\$&");
 }
 
 function resolveServerOptions(context: vscode.ExtensionContext): ServerOptions {

@@ -8,6 +8,7 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/TimeWatcher/lux-lsp"
 
 [workspace.dependencies]
+crossbeam-channel = "0.5"
 gmod-api-db = { path = "crates/gmod-api-db" }
 luxc = { path = "../compiler" }
 lsp-server = "0.7"
