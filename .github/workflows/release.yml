@@ -48,7 +48,8 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          New-Item -ItemType Junction -Path compiler -Target lux/compiler
+          $compilerTarget = (Resolve-Path -LiteralPath "lux/compiler").Path
+          New-Item -ItemType Junction -Path "compiler" -Target $compilerTarget
       - name: Prepare sibling path dependencies (Unix)
         if: runner.os != 'Windows'
         shell: bash
