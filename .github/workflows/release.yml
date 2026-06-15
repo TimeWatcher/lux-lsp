@@ -35,7 +35,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          path: lux-lsp
+          path: lsp
       - uses: actions/checkout@v4
         with:
           repository: TimeWatcher/lux
@@ -49,21 +49,19 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Junction -Path compiler -Target lux/compiler
-          New-Item -ItemType Junction -Path lsp -Target lux-lsp
       - name: Prepare sibling path dependencies (Unix)
         if: runner.os != 'Windows'
         shell: bash
         run: |
           ln -s lux/compiler compiler
-          ln -s lux-lsp lsp
       - name: Build server
-        working-directory: lux-lsp
+        working-directory: lsp
         run: cargo build --locked --release -p lux-lsp --target ${{ matrix.target }}
       - name: Stage server
         shell: bash
         run: |
           mkdir -p dist/server/${{ matrix.platform }}
-          cp lux-lsp/target/${{ matrix.target }}/release/${{ matrix.binary }} dist/server/${{ matrix.platform }}/${{ matrix.binary }}
+          cp lsp/target/${{ matrix.target }}/release/${{ matrix.binary }} dist/server/${{ matrix.platform }}/${{ matrix.binary }}
       - name: Archive server (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -86,41 +84,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          path: lux-lsp
-      - uses: actions/checkout@v4
-        with:
-          repository: TimeWatcher/lux
-          path: lux
+          path: lsp
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: lux-lsp/vscode-lux/package-lock.json
+          cache-dependency-path: lsp/vscode-lux/package-lock.json
       - uses: actions/download-artifact@v4
         with:
           path: downloaded
       - name: Install extension dependencies
-        working-directory: lux-lsp/vscode-lux
+        working-directory: lsp/vscode-lux
         run: npm ci
       - name: Copy bundled servers
         shell: bash
         run: |
-          mkdir -p lux-lsp/vscode-lux/server
+          mkdir -p lsp/vscode-lux/server
           find downloaded -path '*/server/*' -type f | while read -r file; do
             rel="${file#*/server/}"
-            mkdir -p "lux-lsp/vscode-lux/server/$(dirname "$rel")"
-            cp "$file" "lux-lsp/vscode-lux/server/$rel"
+            mkdir -p "lsp/vscode-lux/server/$(dirname "$rel")"
+            cp "$file" "lsp/vscode-lux/server/$rel"
           done
       - name: Compile extension
-        working-directory: lux-lsp/vscode-lux
+        working-directory: lsp/vscode-lux
         run: npm run compile
       - name: Package extension
-        working-directory: lux-lsp/vscode-lux
+        working-directory: lsp/vscode-lux
         run: npm run package
       - uses: actions/upload-artifact@v4
         with:
           name: lux-vscode-vsix
-          path: lux-lsp/vscode-lux/*.vsix
+          path: lsp/vscode-lux/*.vsix
 
   publish:
     name: Publish GitHub Release

@@ -13,7 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          path: lux-lsp
+          path: lsp
       - uses: actions/checkout@v4
         with:
           repository: TimeWatcher/lux
@@ -24,10 +24,9 @@ jobs:
         shell: bash
         run: |
           ln -s lux/compiler compiler
-          ln -s lux-lsp lsp
       - name: Test workspace
         run: cargo test --workspace --locked
-        working-directory: lux-lsp
+        working-directory: lsp
 
   vscode:
     name: VS Code Extension
@@ -35,27 +34,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          path: lux-lsp
-      - uses: actions/checkout@v4
-        with:
-          repository: TimeWatcher/lux
-          path: lux
+          path: lsp
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: lux-lsp/vscode-lux/package-lock.json
-      - name: Prepare sibling path dependencies
-        shell: bash
-        run: |
-          ln -s lux/compiler compiler
-          ln -s lux-lsp lsp
+          cache-dependency-path: lsp/vscode-lux/package-lock.json
       - name: Install extension dependencies
-        working-directory: lux-lsp/vscode-lux
+        working-directory: lsp/vscode-lux
         run: npm ci
       - name: Compile extension
-        working-directory: lux-lsp/vscode-lux
+        working-directory: lsp/vscode-lux
         run: npm run compile
       - name: Package extension
-        working-directory: lux-lsp/vscode-lux
+        working-directory: lsp/vscode-lux
         run: npm run package
