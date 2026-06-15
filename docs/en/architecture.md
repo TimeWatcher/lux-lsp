@@ -32,8 +32,9 @@ This repository will host:
 - `tools/gmod-api-update`: official documentation updater.
 - `docs`: language service standards and user documentation.
 
-The first version may contain only standards and documentation, but the
-implementation must keep the LSP reusable outside VS Code.
+Implementation must keep the LSP reusable outside VS Code. Editor-specific UX
+belongs in `extensions/vscode-lux`; compiler and GMod API semantics belong in
+the Rust crates.
 
 ## Compiler Analysis API
 

@@ -15,7 +15,7 @@ English documentation: [README.md](README.md).
 
 ## 当前实现
 
-Phase 1 和 Phase 2 的基础已经落地：
+Phase 1、Phase 2 和 Phase 3 核心基础已经落地：
 
 - `luxc::analysis` 是 compiler、CLI、LSP 和测试共享的稳定分析入口。
 - LSP 通过内存 overlay 分析未保存文件，不解析 `luxc` 命令行输出。
@@ -23,8 +23,11 @@ Phase 1 和 Phase 2 的基础已经落地：
 - completion 已接入 Lux module/export 语义：module path、export list、import specifier 和普通 binding 会按上下文返回。
 - hover 和 definition 已支持 module 内部 binding、export alias、import binding、unknown external。
 - diagnostics 和 quick fix 已由 compiler analysis API 生成，包括 unknown external 的 `extern` 建议。
+- `gmod-api-db` 已经内置由 Facepunch 官方 Wiki JSON 页表和单页 markup 生成的离线数据库。
+- 当前 bundled manifest 覆盖 6335 个官方页面、6121 个 API 候选页面，其中 5991 个页面结构化解析，130 个页面作为 fallback 文档页保留，生成 10022 个 entry、497 个 hook、151 个 class，失败转换页面为 0。
+- compiler realm 检查和 LSP hover、completion、signature help、GMod 官方文档 code action 共用同一个 `gmod-api-db` 查询接口。
 
-本仓库还没有发布 VS Code 扩展和完整 GMod API 数据库。下一阶段是在这个基础上接入 `gmod-api-db`、signature help、文档级 GMod API hover 和 VS Code 扩展打包。
+本仓库还没有发布 VS Code 扩展。下一阶段是 VS Code 扩展壳、数据库更新命令 UX、curated override 支持和发布打包。
 
 ## 本地开发
 
@@ -32,6 +35,17 @@ Phase 1 和 Phase 2 的基础已经落地：
 cargo test
 cargo run -p lux-lsp
 ```
+
+更新内置官方 GMod API 数据库：
+
+```powershell
+cargo run -p gmod-api-update -- `
+  --out crates\gmod-api-db\data\generated\gmod_api.json `
+  --coverage-out crates\gmod-api-db\data\generated\coverage_manifest.json `
+  --cache-dir target\gmod-api-cache
+```
+
+updater 以 `https://wiki.facepunch.com/gmod/~pagelist?format=json` 作为覆盖率基准，下载官方单页 JSON，转换 Facepunch markup；只要 API 候选页面抓取或转换失败，命令就会失败。开发 parser 时可以显式加 `--allow-failures`。
 
 在 Lux 主仓库中，本仓库作为 `lsp` submodule 存在。`lux-lsp` 依赖相邻的 `../compiler` crate，因此推荐从主仓库克隆并初始化 submodule 后开发。
 

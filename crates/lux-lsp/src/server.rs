@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
+use gmod_api_db::{ApiIndex, entry_markdown, hook_markdown};
 use lsp_server::{Connection, ExtractError, Message, Notification, Request, RequestId, Response};
 use lsp_types::notification::{
     DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, DidSaveTextDocument,
@@ -8,7 +9,7 @@ use lsp_types::notification::{
 };
 use lsp_types::request::{
     CodeActionRequest, Completion, Formatting, GotoDefinition, HoverRequest, Request as LspRequest,
-    SemanticTokensFullRequest,
+    SemanticTokensFullRequest, SignatureHelpRequest,
 };
 use lsp_types::{
     CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams, CompletionItem,
@@ -17,10 +18,11 @@ use lsp_types::{
     DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
     DocumentFormattingParams, GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents,
     HoverParams, InitializeParams, InitializeResult, Location, MarkupContent, MarkupKind, OneOf,
-    Position, PublishDiagnosticsParams, Range, SemanticToken, SemanticTokenType, SemanticTokens,
-    SemanticTokensLegend, SemanticTokensOptions, SemanticTokensParams, SemanticTokensResult,
-    ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Uri,
-    WorkDoneProgressOptions,
+    ParameterInformation, ParameterLabel, Position, PublishDiagnosticsParams, Range, SemanticToken,
+    SemanticTokenType, SemanticTokens, SemanticTokensLegend, SemanticTokensOptions,
+    SemanticTokensParams, SemanticTokensResult, ServerCapabilities, SignatureHelp,
+    SignatureHelpOptions, SignatureInformation, TextDocumentSyncCapability, TextDocumentSyncKind,
+    TextEdit, Uri, WorkDoneProgressOptions,
 };
 use luxc::analysis::{
     AnalysisCodeAction, AnalysisConfig, AnalysisDiagnostic, AnalysisEditKind, AnalysisFile,
@@ -61,6 +63,11 @@ fn server_capabilities() -> InitializeResult {
                 all_commit_characters: None,
                 work_done_progress_options: WorkDoneProgressOptions::default(),
                 completion_item: None,
+            }),
+            signature_help_provider: Some(SignatureHelpOptions {
+                trigger_characters: Some(vec!["(".into(), ",".into(), "\"".into()]),
+                retrigger_characters: Some(vec![",".into()]),
+                work_done_progress_options: WorkDoneProgressOptions::default(),
             }),
             definition_provider: Some(OneOf::Left(true)),
             document_formatting_provider: Some(OneOf::Left(true)),
@@ -114,6 +121,7 @@ struct Server {
     documents: HashMap<Uri, String>,
     published_diagnostics: BTreeSet<Uri>,
     workspace: Option<AnalysisWorkspace>,
+    gmod_api: ApiIndex,
 }
 
 impl Server {
@@ -125,6 +133,7 @@ impl Server {
             documents: HashMap::new(),
             published_diagnostics: BTreeSet::new(),
             workspace: None,
+            gmod_api: ApiIndex::bundled(),
         }
     }
 
@@ -160,6 +169,11 @@ impl Server {
             Some(request) => request,
             None => return Ok(()),
         };
+        let request =
+            match self.try_request::<SignatureHelpRequest>(request, Self::signature_help)? {
+                Some(request) => request,
+                None => return Ok(()),
+            };
         let request = match self.try_request::<GotoDefinition>(request, Self::definition)? {
             Some(request) => request,
             None => return Ok(()),
@@ -263,6 +277,25 @@ impl Server {
         ) else {
             return json_result::<Option<Hover>>(None);
         };
+        if let Some(markdown) = hook_hover_markdown(analysis, &self.gmod_api, &path, offset) {
+            return json_result(Some(Hover {
+                contents: HoverContents::Markup(MarkupContent {
+                    kind: MarkupKind::Markdown,
+                    value: markdown,
+                }),
+                range: None,
+            }));
+        }
+        if let Some(markdown) = external_api_hover_markdown(analysis, &self.gmod_api, &path, offset)
+        {
+            return json_result(Some(Hover {
+                contents: HoverContents::Markup(MarkupContent {
+                    kind: MarkupKind::Markdown,
+                    value: markdown,
+                }),
+                range: None,
+            }));
+        }
         let Some(markdown) = analysis.hover_markdown_at_path_offset(&path, offset) else {
             return json_result::<Option<Hover>>(None);
         };
@@ -305,7 +338,14 @@ impl Server {
                     .unwrap_or(RealmSet::SHARED),
             ),
             CompletionContext::ExportList => analysis.exportable_bindings(&path),
-            CompletionContext::General => general_binding_completions(analysis, &path),
+            CompletionContext::ApiMember { prefix } => {
+                api_completion_candidates(&self.gmod_api, &prefix)
+            }
+            CompletionContext::General => {
+                let mut candidates = general_binding_completions(analysis, &path);
+                candidates.extend(api_root_completion_candidates(&self.gmod_api));
+                candidates
+            }
         };
 
         let items = candidates
@@ -313,6 +353,25 @@ impl Server {
             .map(completion_item)
             .collect::<Vec<_>>();
         json_result(Some(CompletionResponse::Array(items)))
+    }
+
+    fn signature_help(
+        &mut self,
+        params: lsp_types::SignatureHelpParams,
+    ) -> Result<serde_json::Value, String> {
+        let Some((analysis, path, offset)) = self.analysis_and_offset(
+            &params.text_document_position_params.text_document.uri,
+            params.text_document_position_params.position,
+        ) else {
+            return json_result::<Option<SignatureHelp>>(None);
+        };
+        let Some(file) = analysis.file_by_path(&path) else {
+            return json_result::<Option<SignatureHelp>>(None);
+        };
+        let Some(help) = signature_help_at(file, &self.gmod_api, offset) else {
+            return json_result::<Option<SignatureHelp>>(None);
+        };
+        json_result(Some(help))
     }
 
     fn definition(&mut self, params: GotoDefinitionParams) -> Result<serde_json::Value, String> {
@@ -410,6 +469,12 @@ impl Server {
             .code_actions_for_path(&path)
             .into_iter()
             .map(|action| code_action(action, &params.text_document.uri))
+            .chain(api_doc_code_actions(
+                analysis,
+                &self.gmod_api,
+                &path,
+                &params.text_document.uri,
+            ))
             .collect::<Vec<_>>();
         json_result(Some(actions))
     }
@@ -698,6 +763,46 @@ fn code_action(action: AnalysisCodeAction, uri: &Uri) -> CodeActionOrCommand {
     })
 }
 
+fn api_doc_code_actions(
+    analysis: &ProjectAnalysis,
+    api: &ApiIndex,
+    path: &Path,
+    _uri: &Uri,
+) -> Vec<CodeActionOrCommand> {
+    analysis
+        .diagnostics_for_path(path)
+        .into_iter()
+        .filter(|diagnostic| diagnostic.code.as_deref() == Some("REALM001"))
+        .filter_map(|diagnostic| diagnostic_symbol_name(&diagnostic.message))
+        .filter_map(|symbol| {
+            api.entry(&symbol)
+                .and_then(|entry| entry.official_url.as_ref())
+        })
+        .map(|url| {
+            CodeActionOrCommand::CodeAction(CodeAction {
+                title: "Open official GMod documentation".into(),
+                kind: Some(CodeActionKind::QUICKFIX),
+                diagnostics: None,
+                edit: None,
+                command: Some(lsp_types::Command {
+                    title: "Open official GMod documentation".into(),
+                    command: "lux.openGmodDocs".into(),
+                    arguments: Some(vec![serde_json::Value::String(url.clone())]),
+                }),
+                is_preferred: None,
+                disabled: None,
+                data: None,
+            })
+        })
+        .collect()
+}
+
+fn diagnostic_symbol_name(message: &str) -> Option<String> {
+    let start = message.find('`')? + 1;
+    let end = message[start..].find('`')? + start;
+    Some(message[start..end].to_string())
+}
+
 fn completion_item(candidate: CompletionCandidate) -> CompletionItem {
     CompletionItem {
         label: candidate.label,
@@ -815,6 +920,111 @@ fn lsp_range(range: AnalysisRange) -> Range {
     }
 }
 
+fn external_api_hover_markdown(
+    analysis: &ProjectAnalysis,
+    api: &ApiIndex,
+    path: &Path,
+    offset: usize,
+) -> Option<String> {
+    let symbol = analysis.symbol_at_path_offset(path, offset)?;
+    let external = symbol.external_availability.as_ref()?;
+    if matches!(external, luxc::module::RealmAvailability::UnknownExternal) {
+        return None;
+    }
+    let entry = api.entry(&symbol.name)?;
+    Some(entry_markdown(entry))
+}
+
+fn hook_hover_markdown(
+    analysis: &ProjectAnalysis,
+    api: &ApiIndex,
+    path: &Path,
+    offset: usize,
+) -> Option<String> {
+    let file = analysis.file_by_path(path)?;
+    let hook_name = hook_name_at_offset(&file.text, offset)?;
+    api.hook(&hook_name).map(hook_markdown)
+}
+
+fn hook_name_at_offset(text: &str, offset: usize) -> Option<String> {
+    let clamped = offset.min(text.len());
+    let before = &text[..clamped];
+    let after = &text[clamped..];
+    let quote_start = before.rfind(['"', '\''])?;
+    let quote = before[quote_start..].chars().next()?;
+    let hook_prefix = before[..quote_start].trim_end();
+    if !hook_prefix.ends_with("hook.Add(") {
+        return None;
+    }
+    let quote_end = after.find(quote).unwrap_or(after.len());
+    Some(format!(
+        "{}{}",
+        &before[quote_start + quote.len_utf8()..],
+        &after[..quote_end]
+    ))
+}
+
+fn signature_help_at(
+    file: &luxc::source::SourceFile,
+    api: &ApiIndex,
+    offset: usize,
+) -> Option<SignatureHelp> {
+    let text = &file.text[..offset.min(file.text.len())];
+    if let Some(hook_name) = hook_name_in_call_prefix(text)
+        && let Some(hook) = api.hook(&hook_name)
+    {
+        return Some(signature_help_from_signature(&hook.callback));
+    }
+    let call_path = call_path_before_cursor(text)?;
+    let entry = api.entry(&call_path)?;
+    entry.signatures.first().map(signature_help_from_signature)
+}
+
+fn hook_name_in_call_prefix(text: &str) -> Option<String> {
+    let hook_index = text.rfind("hook.Add(")?;
+    let after = &text[hook_index + "hook.Add(".len()..];
+    let quote = after.chars().find(|ch| *ch == '"' || *ch == '\'')?;
+    let start = after.find(quote)? + quote.len_utf8();
+    let rest = &after[start..];
+    let end = rest.find(quote)?;
+    Some(rest[..end].to_string())
+}
+
+fn call_path_before_cursor(text: &str) -> Option<String> {
+    let open = text.rfind('(')?;
+    let before = text[..open].trim_end();
+    let token = before
+        .rsplit(|ch: char| !(ch.is_ascii_alphanumeric() || matches!(ch, '_' | '.' | ':')))
+        .next()
+        .unwrap_or_default();
+    (!token.is_empty()).then(|| token.to_string())
+}
+
+fn signature_help_from_signature(signature: &gmod_api_db::ApiSignature) -> SignatureHelp {
+    SignatureHelp {
+        signatures: vec![SignatureInformation {
+            label: signature.label.clone(),
+            documentation: None,
+            parameters: Some(
+                signature
+                    .parameters
+                    .iter()
+                    .map(|parameter| ParameterInformation {
+                        label: ParameterLabel::Simple(parameter.name.clone()),
+                        documentation: Some(lsp_types::Documentation::String(format!(
+                            "{} - {}",
+                            parameter.ty, parameter.description
+                        ))),
+                    })
+                    .collect(),
+            ),
+            active_parameter: None,
+        }],
+        active_signature: Some(0),
+        active_parameter: Some(0),
+    }
+}
+
 fn json_result<T: serde::Serialize>(value: T) -> Result<serde_json::Value, String> {
     serde_json::to_value(value).map_err(|err| format!("failed to encode LSP result: {err}"))
 }
@@ -839,6 +1049,7 @@ enum CompletionContext {
     ImportSource,
     ImportSpecifierList { source: String },
     ExportList,
+    ApiMember { prefix: String },
     General,
 }
 
@@ -846,6 +1057,9 @@ fn completion_context(prefix: &str, suffix: &str) -> CompletionContext {
     let line = format!("{prefix}{suffix}");
     let cursor = prefix.len();
     let trimmed = line.trim_start();
+    if let Some(prefix) = api_member_prefix(prefix) {
+        return CompletionContext::ApiMember { prefix };
+    }
     if is_import_specifier_context(&line, cursor) {
         if let Some(source) = import_source_for_specifier_list(&line) {
             return CompletionContext::ImportSpecifierList { source };
@@ -858,6 +1072,20 @@ fn completion_context(prefix: &str, suffix: &str) -> CompletionContext {
         return CompletionContext::ExportList;
     }
     CompletionContext::General
+}
+
+fn api_member_prefix(prefix: &str) -> Option<String> {
+    let token = prefix
+        .rsplit(|ch: char| !(ch.is_ascii_alphanumeric() || matches!(ch, '_' | '.' | ':')))
+        .next()
+        .unwrap_or_default();
+    if token.ends_with('.') || token.ends_with(':') {
+        return Some(token.trim_end_matches(['.', ':']).to_string());
+    }
+    token
+        .rfind(['.', ':'])
+        .map(|index| token[..index].to_string())
+        .filter(|prefix| !prefix.is_empty())
 }
 
 fn general_binding_completions(
@@ -883,6 +1111,39 @@ fn general_binding_completions(
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default()
+}
+
+fn api_root_completion_candidates(api: &ApiIndex) -> Vec<CompletionCandidate> {
+    api.roots().into_iter().map(api_entry_candidate).collect()
+}
+
+fn api_completion_candidates(api: &ApiIndex, prefix: &str) -> Vec<CompletionCandidate> {
+    let needle = if prefix.ends_with('.') || prefix.ends_with(':') {
+        prefix.to_string()
+    } else {
+        format!("{prefix}.")
+    };
+    api.completions_for_prefix(&needle)
+        .into_iter()
+        .map(api_entry_candidate)
+        .collect()
+}
+
+fn api_entry_candidate(entry: &gmod_api_db::ApiEntry) -> CompletionCandidate {
+    CompletionCandidate {
+        label: entry
+            .path
+            .rsplit(['.', ':'])
+            .next()
+            .unwrap_or(&entry.path)
+            .to_string(),
+        detail: Some(format!(
+            "GMod {}, {}",
+            entry.kind.label(),
+            entry.realm.as_str()
+        )),
+        documentation: Some(entry_markdown(entry)),
+    }
 }
 
 fn is_import_source_context(prefix: &str) -> bool {
@@ -929,6 +1190,8 @@ mod tests {
     use super::{
         CompletionContext, completion_context, encode_semantic_tokens, path_to_url, url_to_path,
     };
+    use super::{hook_name_at_offset, signature_help_at};
+    use gmod_api_db::ApiIndex;
     use lsp_types::SemanticToken;
     use luxc::analysis::{AnalysisSemanticToken, SemanticTokenKind};
     use luxc::source::{SourceFile, SourceSpan};
@@ -950,9 +1213,37 @@ mod tests {
             CompletionContext::ExportList
         );
         assert_eq!(
+            completion_context("net.", ""),
+            CompletionContext::ApiMember {
+                prefix: "net".into()
+            }
+        );
+        assert_eq!(
             completion_context("fn run() = inv", ""),
             CompletionContext::General
         );
+    }
+
+    #[test]
+    fn hook_hover_context_extracts_hook_names() {
+        let text = "hook.Add(\"PlayerInitialSpawn\", \"id\", function(ply) end)";
+        let offset = text.find("Initial").expect("offset");
+        assert_eq!(
+            hook_name_at_offset(text, offset),
+            Some("PlayerInitialSpawn".into())
+        );
+    }
+
+    #[test]
+    fn signature_help_uses_gmod_api_database() {
+        let api = ApiIndex::bundled();
+        let file = SourceFile::new(0, None, "net.Start(");
+        let help = signature_help_at(&file, &api, file.text.len()).expect("signature help");
+        assert_eq!(
+            help.signatures[0].label,
+            "net.Start(messageName, unreliable = false)"
+        );
+        assert_eq!(help.signatures[0].parameters.as_ref().unwrap().len(), 2);
     }
 
     #[test]

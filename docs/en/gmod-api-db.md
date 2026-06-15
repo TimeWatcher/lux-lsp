@@ -18,10 +18,28 @@ It must support:
 - official example code
 - Lux-specific notes
 
-## Sources
+## Official Data Pipeline
 
-The primary source should be the Facepunch Garry's Mod Wiki and other official
-or public sources.
+The primary source must be the official Facepunch Garry's Mod Wiki JSON, not a
+hand-maintained curated API table.
+
+Lux uses `https://wiki.facepunch.com/gmod/~pagelist?format=json` as the
+coverage baseline, then fetches every official page as `?format=json` and parses
+the Facepunch markup in that payload.
+
+Generation pipeline:
+
+```text
+official pagelist JSON
+  -> per-page official JSON
+  -> Facepunch markup parser
+  -> gmod_api.json
+  -> coverage_manifest.json
+```
+
+Handwritten data may exist only as test fixtures or override patches. It must
+not be the main database source. Overrides must be traceable and must not
+replace the official scraping pipeline.
 
 GLua Enhanced is a user-experience reference only. Lux must not copy its GPL
 implementation or bundled data. Lux should generate and curate its own database
@@ -35,6 +53,30 @@ Every generated database must record:
 - parser version
 - override version
 - database version
+
+Current updater command:
+
+```powershell
+cargo run -p gmod-api-update -- `
+  --out crates\gmod-api-db\data\generated\gmod_api.json `
+  --coverage-out crates\gmod-api-db\data\generated\coverage_manifest.json `
+  --cache-dir target\gmod-api-cache
+```
+
+Default rules:
+
+- The official pagelist is the source of truth.
+- The update command fails when an API candidate page cannot be fetched or
+  parsed.
+- `--allow-failures` is only for parser development.
+- The generated database and coverage manifest must be committed together.
+- The coverage manifest must report official page count, API candidate count,
+  structured conversions, fallback documentation pages, skipped pages, and
+  failed pages.
+
+The current bundled manifest covers 6,335 official pages and 6,121 API candidate
+pages. It has 5,991 structured conversions, 130 fallback documentation pages,
+10,022 entries, 497 hooks, 151 classes, and zero failed conversions.
 
 ## Data Model
 

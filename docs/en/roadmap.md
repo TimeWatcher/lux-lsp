@@ -29,30 +29,43 @@
 
 ## Phase 3: GMod API Database
 
-- Define the database schema.
-- Implement official documentation scraping and parsing tools.
-- Add curated overrides.
-- Bundle an offline database.
-- Provide `lux gmod api update` and the matching VS Code command.
+- Done: define the database schema used by compiler and LSP.
+- Done: implement `gmod-api-update`, which fetches the official Facepunch Wiki
+  page list, downloads per-page JSON, parses Facepunch markup, and writes a
+  coverage manifest.
+- Done: bundle an offline generated database.
+- Done: use the official page list as the coverage baseline. The current
+  generated manifest covers 6,335 official pages and 6,121 API candidate pages:
+  5,991 structured conversions, 130 fallback documentation pages, and zero
+  failed conversions.
+- Remaining: add curated override layers for known documentation corrections.
+- Remaining: expose `lux gmod api update` and the matching VS Code command.
 
 ## Phase 4: Document Hover And GLua Baseline
 
-- Provide documentation-level hover for common GMod APIs.
-- Include official descriptions, parameters, returns, warnings, notes, example
-  code, and links.
-- Support hook name hover, callback signatures, panel hover, and class method
-  hover.
-- Complete signature help and completion.
+- Done: provide documentation-level hover from generated GMod API data.
+- Done: include official descriptions, parameters, returns, warnings, notes,
+  examples, and links when the official page provides them.
+- Done: support hook name hover and callback signatures.
+- Done: support API root/member completion and signature help from the shared
+  database.
+- Remaining: add type-aware panel/class method completion based on receiver and
+  constructor inference.
 
 ## Phase 5: Realm Availability Engine
 
-- Replace old realm guard with `gmod-api-db`.
-- Share one query interface between compiler and LSP.
-- Support path-level realm annotations.
+- Done: replace the old realm guard with `gmod-api-db`.
+- Done: share one query interface between compiler and LSP.
+- Done: support path-level realm annotations from the generated official data.
 - Support source extern declarations and package-level extern config.
 - Support unknown external allow/warn/error.
-- Provide quick fixes for realm mismatch, unknown external, and export realm
-  widening.
+- Done: support source extern declarations and unknown external
+  allow/warn/error.
+- Remaining: support package-level extern config.
+- Partial: provide quick fixes for unknown external and official-docs actions for
+  realm mismatch.
+- Remaining: add edit-producing quick fixes for package extern config and export
+  realm widening.
 
 ## Phase 6: VS Code Extension
 

@@ -23,7 +23,7 @@ Enhanced, plus Lux-specific module, realm, export, and syntax intelligence.
 
 ## Current Implementation
 
-The Phase 1 and Phase 2 foundation is in place:
+The Phase 1, Phase 2, and core Phase 3 foundation is in place:
 
 - `luxc::analysis` is the stable analysis entry point shared by compiler, CLI,
   LSP, and tests.
@@ -37,10 +37,17 @@ The Phase 1 and Phase 2 foundation is in place:
   bindings, and unknown external symbols.
 - Diagnostics and quick fixes come from compiler analysis, including guided
   `extern` suggestions for unknown external symbols.
+- `gmod-api-db` now has a generated offline database built from the official
+  Facepunch Wiki JSON page list and per-page markup.
+- The generated database currently covers 6,335 official pages and 6,121 API
+  candidate pages. The latest bundled manifest has 5,991 structured conversions,
+  130 fallback documentation pages, 10,022 entries, 497 hooks, 151 classes, and
+  zero failed page conversions.
+- Compiler realm checks and LSP hover, completion, signature help, and GMod docs
+  code actions use the same `gmod-api-db` query interface.
 
-The VS Code extension and complete GMod API database are not released yet. The
-next stage connects this server to `gmod-api-db`, signature help,
-documentation-level GMod API hover, and VS Code packaging.
+The VS Code extension is not released yet. The next stage adds the VS Code
+shell, update command UX, curated override support, and release packaging.
 
 ## Local Development
 
@@ -48,6 +55,20 @@ documentation-level GMod API hover, and VS Code packaging.
 cargo test
 cargo run -p lux-lsp
 ```
+
+Update the bundled official GMod API database:
+
+```powershell
+cargo run -p gmod-api-update -- `
+  --out crates\gmod-api-db\data\generated\gmod_api.json `
+  --coverage-out crates\gmod-api-db\data\generated\coverage_manifest.json `
+  --cache-dir target\gmod-api-cache
+```
+
+The updater uses `https://wiki.facepunch.com/gmod/~pagelist?format=json` as the
+coverage baseline, downloads official page JSON payloads, converts Facepunch
+markup, and fails if any API candidate page cannot be converted unless
+`--allow-failures` is explicitly passed for parser development.
 
 In the main Lux repository, this repository is checked out as the `lsp`
 submodule. `lux-lsp` depends on the sibling `../compiler` crate, so the

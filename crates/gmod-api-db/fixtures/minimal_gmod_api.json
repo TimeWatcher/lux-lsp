@@ -1,0 +1,490 @@
+{
+  "version": "2026.06-bundled",
+  "generated_from": "Bundled curated data derived from public Garry's Mod API documentation URLs. This file is schema-compatible with future updater output.",
+  "entries": [
+    {
+      "path": "CLIENT",
+      "kind": "global",
+      "realm": "client",
+      "summary": "Boolean global that is true in the client realm.",
+      "description": ["Use it for compatibility checks in generated Lua. Lux code should prefer explicit `client { ... }` domains and realm declarations."],
+      "official_url": "https://wiki.facepunch.com/gmod/States"
+    },
+    {
+      "path": "SERVER",
+      "kind": "global",
+      "realm": "server",
+      "summary": "Boolean global that is true in the server realm.",
+      "description": ["Use it for compatibility checks in generated Lua. Lux code should prefer explicit `server { ... }` domains and realm declarations."],
+      "official_url": "https://wiki.facepunch.com/gmod/States"
+    },
+    {
+      "path": "AddCSLuaFile",
+      "kind": "function",
+      "realm": "server",
+      "summary": "Marks a Lua file to be sent from the server to clients.",
+      "description": ["Lux's GMod backend normally emits loader code for client files, so hand-written `AddCSLuaFile` is usually unnecessary in Lux packages."],
+      "signatures": [
+        {
+          "label": "AddCSLuaFile(path)",
+          "parameters": [
+            {"name": "path", "ty": "string", "description": "Lua path relative to the gamemode or addon lua directory."}
+          ]
+        }
+      ],
+      "warnings": ["Server-only. Calling it from shared/client Lux code is a realm error."],
+      "examples": [
+        {"title": "Legacy GLua usage", "language": "lua", "code": "if SERVER then\n  AddCSLuaFile(\"cl_hud.lua\")\nend"}
+      ],
+      "official_url": "https://wiki.facepunch.com/gmod/Global.AddCSLuaFile"
+    },
+    {
+      "path": "include",
+      "kind": "function",
+      "realm": "shared",
+      "summary": "Runs another Lua file in the current realm.",
+      "description": ["Lux modules should use `import` instead of hand-written `include` for Lux source. This entry exists for interop with legacy GLua."],
+      "signatures": [
+        {
+          "label": "include(path)",
+          "parameters": [
+            {"name": "path", "ty": "string", "description": "Lua file path."}
+          ],
+          "returns": [
+            {"ty": "any", "description": "Values returned by the included Lua chunk."}
+          ]
+        }
+      ],
+      "official_url": "https://wiki.facepunch.com/gmod/Global.include"
+    },
+    {
+      "path": "hook",
+      "kind": "library",
+      "realm": "shared",
+      "summary": "Hook library for registering callbacks on engine and gamemode events.",
+      "official_url": "https://wiki.facepunch.com/gmod/hook"
+    },
+    {
+      "path": "hook.Add",
+      "kind": "function",
+      "realm": "shared",
+      "summary": "Registers a function for a named hook event.",
+      "description": ["The hook name controls callback parameters. Lux LSP uses hook data to show hook-name hover and callback signature help."],
+      "signatures": [
+        {
+          "label": "hook.Add(eventName, identifier, callback)",
+          "parameters": [
+            {"name": "eventName", "ty": "string", "description": "Hook name, for example \"PlayerInitialSpawn\"."},
+            {"name": "identifier", "ty": "string|table", "description": "Unique identifier used to replace or remove the hook."},
+            {"name": "callback", "ty": "function", "description": "Function called when the hook fires."}
+          ]
+        }
+      ],
+      "examples": [
+        {"title": "Player spawn callback", "language": "lua", "code": "hook.Add(\"PlayerInitialSpawn\", \"Welcome\", function(ply)\n  print(ply:Nick())\nend)"}
+      ],
+      "official_url": "https://wiki.facepunch.com/gmod/hook.Add"
+    },
+    {
+      "path": "hook.Remove",
+      "kind": "function",
+      "realm": "shared",
+      "summary": "Removes a previously registered hook callback.",
+      "signatures": [
+        {
+          "label": "hook.Remove(eventName, identifier)",
+          "parameters": [
+            {"name": "eventName", "ty": "string", "description": "Hook name."},
+            {"name": "identifier", "ty": "string|table", "description": "Identifier originally passed to hook.Add."}
+          ]
+        }
+      ],
+      "official_url": "https://wiki.facepunch.com/gmod/hook.Remove"
+    },
+    {
+      "path": "net",
+      "kind": "library",
+      "realm": "shared",
+      "summary": "Networking library for sending structured messages between server and client.",
+      "official_url": "https://wiki.facepunch.com/gmod/net"
+    },
+    {
+      "path": "net.Start",
+      "kind": "function",
+      "realm": "shared",
+      "summary": "Begins writing a net message with a registered network string.",
+      "description": ["On the server, the name must be registered with `util.AddNetworkString` before clients can receive it. After `net.Start`, write payload data and finish with a send function such as `net.Send`, `net.Broadcast`, or `net.SendToServer`."],
+      "signatures": [
+        {
+          "label": "net.Start(messageName, unreliable = false)",
+          "parameters": [
+            {"name": "messageName", "ty": "string", "description": "Registered network message name."},
+            {"name": "unreliable", "ty": "boolean", "description": "Whether to use the unreliable channel.", "optional": true}
+          ],
+          "returns": [
+            {"ty": "boolean", "description": "Whether the message could be started."}
+          ]
+        }
+      ],
+      "warnings": ["A net message must be completed with exactly one send function."],
+      "examples": [
+        {"title": "Server to all clients", "language": "lua", "code": "util.AddNetworkString(\"LuxNotice\")\nnet.Start(\"LuxNotice\")\nnet.WriteString(\"Ready\")\nnet.Broadcast()"}
+      ],
+      "related": ["util.AddNetworkString", "net.Receive", "net.Broadcast", "net.Send", "net.SendToServer"],
+      "official_url": "https://wiki.facepunch.com/gmod/net.Start"
+    },
+    {
+      "path": "net.Receive",
+      "kind": "function",
+      "realm": "shared",
+      "summary": "Registers a callback for a net message.",
+      "description": ["The callback receives the message length and, on the server, the player who sent the message. Client callbacks do not receive a player argument."],
+      "signatures": [
+        {
+          "label": "net.Receive(messageName, callback)",
+          "parameters": [
+            {"name": "messageName", "ty": "string", "description": "Network message name."},
+            {"name": "callback", "ty": "function(len: number, ply?: Player)", "description": "Handler called when the message arrives."}
+          ]
+        }
+      ],
+      "examples": [
+        {"title": "Receive a message", "language": "lua", "code": "net.Receive(\"LuxNotice\", function(len, ply)\n  print(net.ReadString())\nend)"}
+      ],
+      "official_url": "https://wiki.facepunch.com/gmod/net.Receive"
+    },
+    {
+      "path": "net.Broadcast",
+      "kind": "function",
+      "realm": "server",
+      "summary": "Sends the current net message to all connected players.",
+      "signatures": [
+        {"label": "net.Broadcast()"}
+      ],
+      "warnings": ["Server-only. Use `net.SendToServer` on the client."],
+      "official_url": "https://wiki.facepunch.com/gmod/net.Broadcast"
+    },
+    {
+      "path": "net.Send",
+      "kind": "function",
+      "realm": "server",
+      "summary": "Sends the current net message to one or more players.",
+      "signatures": [
+        {
+          "label": "net.Send(players)",
+          "parameters": [
+            {"name": "players", "ty": "Player|Player[]", "description": "Recipient or recipient list."}
+          ]
+        }
+      ],
+      "official_url": "https://wiki.facepunch.com/gmod/net.Send"
+    },
+    {
+      "path": "net.SendToServer",
+      "kind": "function",
+      "realm": "client",
+      "summary": "Sends the current net message from a client to the server.",
+      "signatures": [
+        {"label": "net.SendToServer()"}
+      ],
+      "official_url": "https://wiki.facepunch.com/gmod/net.SendToServer"
+    },
+    {
+      "path": "util",
+      "kind": "library",
+      "realm": "shared",
+      "summary": "Utility library with networking, tracing, JSON, compression, and misc helpers.",
+      "official_url": "https://wiki.facepunch.com/gmod/util"
+    },
+    {
+      "path": "util.AddNetworkString",
+      "kind": "function",
+      "realm": "server",
+      "summary": "Registers a network message name for server/client net messages.",
+      "signatures": [
+        {
+          "label": "util.AddNetworkString(messageName)",
+          "parameters": [
+            {"name": "messageName", "ty": "string", "description": "Network message name to register."}
+          ],
+          "returns": [
+            {"ty": "number", "description": "Network string id."}
+          ]
+        }
+      ],
+      "warnings": ["Server-only. Register network strings during initialization, not inside high-frequency hooks."],
+      "official_url": "https://wiki.facepunch.com/gmod/util.AddNetworkString"
+    },
+    {
+      "path": "vgui",
+      "kind": "library",
+      "realm": "client",
+      "summary": "Client-side VGUI library for panels and Derma controls.",
+      "official_url": "https://wiki.facepunch.com/gmod/vgui"
+    },
+    {
+      "path": "vgui.Create",
+      "kind": "function",
+      "realm": "client",
+      "summary": "Creates a VGUI panel by class name.",
+      "signatures": [
+        {
+          "label": "vgui.Create(className, parent = nil, name = nil)",
+          "parameters": [
+            {"name": "className", "ty": "string", "description": "Panel class such as \"DFrame\" or \"DPanel\"."},
+            {"name": "parent", "ty": "Panel", "description": "Optional parent panel.", "optional": true},
+            {"name": "name", "ty": "string", "description": "Optional panel name.", "optional": true}
+          ],
+          "returns": [
+            {"ty": "Panel", "description": "Created panel instance."}
+          ]
+        }
+      ],
+      "examples": [
+        {"title": "Create a frame", "language": "lua", "code": "local frame = vgui.Create(\"DFrame\")\nframe:SetTitle(\"Lux\")\nframe:MakePopup()"}
+      ],
+      "official_url": "https://wiki.facepunch.com/gmod/vgui.Create"
+    },
+    {
+      "path": "draw",
+      "kind": "library",
+      "realm": "client",
+      "summary": "2D drawing helpers available on the client.",
+      "official_url": "https://wiki.facepunch.com/gmod/draw"
+    },
+    {
+      "path": "draw.SimpleText",
+      "kind": "function",
+      "realm": "client",
+      "summary": "Draws text with alignment support.",
+      "signatures": [
+        {
+          "label": "draw.SimpleText(text, font, x, y, color = color_white, xAlign = TEXT_ALIGN_LEFT, yAlign = TEXT_ALIGN_TOP)",
+          "parameters": [
+            {"name": "text", "ty": "string", "description": "Text to draw."},
+            {"name": "font", "ty": "string", "description": "Font name."},
+            {"name": "x", "ty": "number", "description": "X coordinate."},
+            {"name": "y", "ty": "number", "description": "Y coordinate."},
+            {"name": "color", "ty": "Color", "description": "Text color.", "optional": true}
+          ],
+          "returns": [
+            {"ty": "number, number", "description": "Text width and height."}
+          ]
+        }
+      ],
+      "official_url": "https://wiki.facepunch.com/gmod/draw.SimpleText"
+    },
+    {
+      "path": "surface",
+      "kind": "library",
+      "realm": "client",
+      "summary": "Low-level 2D drawing library.",
+      "official_url": "https://wiki.facepunch.com/gmod/surface"
+    },
+    {
+      "path": "surface.SetDrawColor",
+      "kind": "function",
+      "realm": "client",
+      "summary": "Sets the current draw color for subsequent surface drawing calls.",
+      "signatures": [
+        {
+          "label": "surface.SetDrawColor(color)",
+          "parameters": [
+            {"name": "color", "ty": "Color|number, number, number, number", "description": "Color object or RGBA components."}
+          ]
+        }
+      ],
+      "official_url": "https://wiki.facepunch.com/gmod/surface.SetDrawColor"
+    },
+    {
+      "path": "surface.DrawRect",
+      "kind": "function",
+      "realm": "client",
+      "summary": "Draws a filled rectangle using the current draw color.",
+      "signatures": [
+        {
+          "label": "surface.DrawRect(x, y, width, height)",
+          "parameters": [
+            {"name": "x", "ty": "number", "description": "X coordinate."},
+            {"name": "y", "ty": "number", "description": "Y coordinate."},
+            {"name": "width", "ty": "number", "description": "Rectangle width."},
+            {"name": "height", "ty": "number", "description": "Rectangle height."}
+          ]
+        }
+      ],
+      "official_url": "https://wiki.facepunch.com/gmod/surface.DrawRect"
+    },
+    {
+      "path": "LocalPlayer",
+      "kind": "function",
+      "realm": "client",
+      "summary": "Returns the local client Player entity.",
+      "signatures": [
+        {
+          "label": "LocalPlayer()",
+          "returns": [
+            {"ty": "Player", "description": "Local player object."}
+          ]
+        }
+      ],
+      "official_url": "https://wiki.facepunch.com/gmod/Global.LocalPlayer"
+    },
+    {
+      "path": "player",
+      "kind": "library",
+      "realm": "shared",
+      "summary": "Player lookup library.",
+      "official_url": "https://wiki.facepunch.com/gmod/player"
+    },
+    {
+      "path": "player.GetAll",
+      "kind": "function",
+      "realm": "shared",
+      "summary": "Returns a table of all connected players.",
+      "signatures": [
+        {
+          "label": "player.GetAll()",
+          "returns": [
+            {"ty": "Player[]", "description": "All players currently connected."}
+          ]
+        }
+      ],
+      "official_url": "https://wiki.facepunch.com/gmod/player.GetAll"
+    },
+    {
+      "path": "ScrW",
+      "kind": "function",
+      "realm": "client",
+      "summary": "Returns the current screen width.",
+      "signatures": [
+        {"label": "ScrW()", "returns": [{"ty": "number", "description": "Screen width in pixels."}]}
+      ],
+      "official_url": "https://wiki.facepunch.com/gmod/Global.ScrW"
+    },
+    {
+      "path": "ScrH",
+      "kind": "function",
+      "realm": "client",
+      "summary": "Returns the current screen height.",
+      "signatures": [
+        {"label": "ScrH()", "returns": [{"ty": "number", "description": "Screen height in pixels."}]}
+      ],
+      "official_url": "https://wiki.facepunch.com/gmod/Global.ScrH"
+    },
+    {
+      "path": "IsValid",
+      "kind": "function",
+      "realm": "shared",
+      "summary": "Checks whether an entity, panel, or other object is valid.",
+      "signatures": [
+        {
+          "label": "IsValid(value)",
+          "parameters": [{"name": "value", "ty": "any", "description": "Value to validate."}],
+          "returns": [{"ty": "boolean", "description": "True when the value is valid."}]
+        }
+      ],
+      "official_url": "https://wiki.facepunch.com/gmod/Global.IsValid"
+    }
+  ],
+  "hooks": [
+    {
+      "name": "PlayerInitialSpawn",
+      "realm": "server",
+      "summary": "Called when a player has fully joined the server for the first time in the session.",
+      "description": ["Use this hook for server-side initialization that requires a Player object."],
+      "callback": {
+        "label": "GM:PlayerInitialSpawn(ply, transition)",
+        "parameters": [
+          {"name": "ply", "ty": "Player", "description": "The player who joined."},
+          {"name": "transition", "ty": "boolean", "description": "Whether this spawn is part of a transition.", "optional": true}
+        ]
+      },
+      "examples": [
+        {"title": "Welcome message", "language": "lua", "code": "hook.Add(\"PlayerInitialSpawn\", \"Welcome\", function(ply)\n  print(ply:Nick() .. \" joined\")\nend)"}
+      ],
+      "official_url": "https://wiki.facepunch.com/gmod/GM:PlayerInitialSpawn"
+    },
+    {
+      "name": "HUDPaint",
+      "realm": "client",
+      "summary": "Called every frame when the HUD should be painted.",
+      "callback": {
+        "label": "GM:HUDPaint()"
+      },
+      "examples": [
+        {"title": "Draw HUD text", "language": "lua", "code": "hook.Add(\"HUDPaint\", \"LuxHud\", function()\n  draw.SimpleText(\"Lux\", \"DermaDefault\", 24, 24, color_white)\nend)"}
+      ],
+      "official_url": "https://wiki.facepunch.com/gmod/GM:HUDPaint"
+    },
+    {
+      "name": "Think",
+      "realm": "shared",
+      "summary": "Called repeatedly while the game is running.",
+      "callback": {
+        "label": "GM:Think()"
+      },
+      "official_url": "https://wiki.facepunch.com/gmod/GM:Think"
+    }
+  ],
+  "classes": [
+    {
+      "name": "Player",
+      "summary": "Player entity class.",
+      "methods": [
+        {
+          "path": "Player:Nick",
+          "kind": "method",
+          "realm": "shared",
+          "summary": "Returns the player's display name.",
+          "signatures": [
+            {"label": "Player:Nick()", "returns": [{"ty": "string", "description": "Player nickname."}]}
+          ],
+          "official_url": "https://wiki.facepunch.com/gmod/Player:Nick"
+        },
+        {
+          "path": "Player:SteamID",
+          "kind": "method",
+          "realm": "shared",
+          "summary": "Returns the player's SteamID.",
+          "signatures": [
+            {"label": "Player:SteamID()", "returns": [{"ty": "string", "description": "SteamID string."}]}
+          ],
+          "official_url": "https://wiki.facepunch.com/gmod/Player:SteamID"
+        }
+      ],
+      "official_url": "https://wiki.facepunch.com/gmod/Player"
+    },
+    {
+      "name": "Panel",
+      "summary": "Base VGUI panel class.",
+      "methods": [
+        {
+          "path": "Panel:SetSize",
+          "kind": "method",
+          "realm": "client",
+          "summary": "Sets panel width and height.",
+          "signatures": [
+            {"label": "Panel:SetSize(width, height)", "parameters": [
+              {"name": "width", "ty": "number", "description": "New width."},
+              {"name": "height", "ty": "number", "description": "New height."}
+            ]}
+          ],
+          "official_url": "https://wiki.facepunch.com/gmod/Panel:SetSize"
+        },
+        {
+          "path": "Panel:Dock",
+          "kind": "method",
+          "realm": "client",
+          "summary": "Docks the panel to a side of its parent.",
+          "signatures": [
+            {"label": "Panel:Dock(dockType)", "parameters": [
+              {"name": "dockType", "ty": "number", "description": "Dock constant such as FILL, TOP, LEFT."}
+            ]}
+          ],
+          "official_url": "https://wiki.facepunch.com/gmod/Panel:Dock"
+        }
+      ],
+      "official_url": "https://wiki.facepunch.com/gmod/Panel"
+    }
+  ]
+}

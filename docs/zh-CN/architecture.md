@@ -27,7 +27,7 @@ gmod-api-db
 - `tools/gmod-api-update`：从官方文档更新 API 数据库的工具。
 - `docs`：语言服务标准和用户文档。
 
-MVP 可以先只落文档和标准，但实现时不应把 VS Code 扩展写成不可复用的一体化插件。LSP server 必须能被其他编辑器复用。
+实现必须保持 LSP server 可被 VS Code 之外的编辑器复用。编辑器专属体验属于 `extensions/vscode-lux`，compiler 和 GMod API 语义属于 Rust crates。
 
 ## 编译器分析 API
 
