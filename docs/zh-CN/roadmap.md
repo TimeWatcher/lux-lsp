@@ -26,7 +26,7 @@
 - 已完成：定义 compiler 和 LSP 共用的数据库 schema。
 - 已完成：实现 `gmod-api-update`，从 Facepunch 官方 Wiki 页表抓取全量地址，下载单页 JSON，解析 Facepunch markup，并生成 coverage manifest。
 - 已完成：内置 generated 离线数据库。
-- 已完成：以官方页表作为覆盖率基准。当前 generated manifest 覆盖 6335 个官方页面和 6122 个 API 候选页面，其中 6121 个页面结构化解析、1 个页面作为 fallback 文档页保留，失败转换为 0。
+- 已完成：以官方页表作为覆盖率基准。当前 generated manifest 覆盖 6335 个官方页面和 6121 个 API 候选页面，其中 6121 个页面结构化解析、0 个页面作为 fallback 文档页保留，失败转换为 0。
 - 已完成：解析官方 class 和 Derma panel 的 parent metadata，因此方法补全、hover 和 signature help 会沿官方 class parent chain 查询，而不是依赖人工维护的继承表。
 - 已完成：加入 curated 轻量 JSON override 层，用于修正官方文档中已知的不精确信息。
 - 已完成：通过主 compiler CLI 提供 `luxc gmod api update`。

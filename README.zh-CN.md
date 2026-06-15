@@ -24,7 +24,7 @@ Phase 1、Phase 2 和 Phase 3 核心基础已经落地：
 - hover 和 definition 已支持 module 内部 binding、export alias、import binding、unknown external。
 - diagnostics 和 quick fix 已由 compiler analysis API 生成，包括 unknown external 的 `extern` 建议。
 - `gmod-api-db` 已经内置由 Facepunch 官方 Wiki JSON 页表和单页 markup 生成的离线数据库。
-- 当前 bundled manifest 覆盖 6335 个官方页面、6122 个 API 候选页面，其中 6121 个页面结构化解析，1 个页面作为 fallback 文档页保留，生成 10023 个 entry、497 个 hook、186 个 class，失败转换页面为 0。
+- 当前 bundled manifest 覆盖 6335 个官方页面、6121 个 API 候选页面，其中 6121 个页面结构化解析，0 个页面作为 fallback 文档页保留，生成 10022 个 entry、497 个 hook、186 个 class，失败转换页面为 0。
 - 官方 class 和 Derma panel 的 parent metadata 已进入数据库，因此继承方法补全和文档解析沿 Facepunch 官方 markup 查询，而不是依赖人工维护的类型表。
 - compiler realm 检查和 LSP hover、completion、signature help、GMod 官方文档 code action 共用同一个 `gmod-api-db` 查询接口。
 

@@ -566,9 +566,14 @@ fn is_api_candidate(page: &WikiPage) -> bool {
                 | "realm-server"
                 | "realm-menu"
         )
-    }) || ["<function", "<enum", "<structure", "<type", "<panel"]
-        .into_iter()
-        .any(|needle| page.markup.contains(needle))
+    }) || has_api_markup_block(&page.markup)
+}
+
+fn has_api_markup_block(markup: &str) -> bool {
+    static API_MARKUP_RE: OnceLock<Regex> = OnceLock::new();
+    API_MARKUP_RE
+        .get_or_init(|| Regex::new(r#"(?is)<(function|enum|structure|type|panel)\b"#).unwrap())
+        .is_match(markup)
 }
 
 fn parse_type_blocks(page: &WikiPage, source: &ApiSource) -> Vec<ApiEntry> {
@@ -1522,7 +1527,10 @@ impl IfEmpty for String {
 mod tests {
     use super::{ApiRealm, ApiSource, PageListItem, WikiPage, source_for};
     use super::{apply_override_files, merge_entries_by_path};
-    use super::{parse_enum_blocks, parse_function_blocks, parse_realm, parse_type_blocks};
+    use super::{
+        has_api_markup_block, parse_enum_blocks, parse_function_blocks, parse_realm,
+        parse_type_blocks,
+    };
     use crate::Args;
     use gmod_api_db::{ApiEntry, ApiKind};
     use std::path::PathBuf;
@@ -1665,6 +1673,16 @@ mod tests {
         };
         let entries = parse_type_blocks(&page, &source());
         assert_eq!(entries[0].path, "net");
+    }
+
+    #[test]
+    fn api_candidate_detection_ignores_literal_angle_words() {
+        assert!(has_api_markup_block(
+            "<panel><parent>DLabel</parent></panel>"
+        ));
+        assert!(!has_api_markup_block(
+            "Shows panel animation variables: <panelname | blank for all panels>."
+        ));
     }
 
     #[test]

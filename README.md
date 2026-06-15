@@ -39,9 +39,9 @@ The Phase 1, Phase 2, and core Phase 3 foundation is in place:
   `extern` suggestions for unknown external symbols.
 - `gmod-api-db` now has a generated offline database built from the official
   Facepunch Wiki JSON page list and per-page markup.
-- The generated database currently covers 6,335 official pages and 6,122 API
+- The generated database currently covers 6,335 official pages and 6,121 API
   candidate pages. The latest bundled manifest has 6,121 structured conversions,
-  1 fallback documentation page, 10,023 entries, 497 hooks, 186 classes, and
+  zero fallback documentation pages, 10,022 entries, 497 hooks, 186 classes, and
   zero failed page conversions.
 - Official class and Derma panel parent metadata is parsed into the database, so
   inherited method completion and docs follow the official Facepunch markup

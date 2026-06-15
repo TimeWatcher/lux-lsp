@@ -35,8 +35,8 @@
   coverage manifest.
 - Done: bundle an offline generated database.
 - Done: use the official page list as the coverage baseline. The current
-  generated manifest covers 6,335 official pages and 6,122 API candidate pages:
-  6,121 structured conversions, 1 fallback documentation page, and zero
+  generated manifest covers 6,335 official pages and 6,121 API candidate pages:
+  6,121 structured conversions, zero fallback documentation pages, and zero
   failed conversions.
 - Done: parse official class and Derma panel parent metadata, so method
   completion, hover, and signature help follow the official class parent chain

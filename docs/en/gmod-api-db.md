@@ -79,9 +79,9 @@ Default rules:
   structured conversions, fallback documentation pages, skipped pages, and
   failed pages.
 
-The current bundled manifest covers 6,335 official pages and 6,122 API candidate
-pages. It has 6,121 structured conversions, 1 fallback documentation page,
-10,023 entries, 497 hooks, 186 classes, and zero failed conversions.
+The current bundled manifest covers 6,335 official pages and 6,121 API candidate
+pages. It has 6,121 structured conversions, zero fallback documentation pages,
+10,022 entries, 497 hooks, 186 classes, and zero failed conversions.
 
 Override files are lightweight JSON patches. They do not need to repeat the full
 generated database metadata:
