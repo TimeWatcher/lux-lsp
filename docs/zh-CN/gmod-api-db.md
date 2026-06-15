@@ -67,6 +67,24 @@ luxc gmod api update `
 
 当前 bundled manifest 覆盖 6335 个官方页面、6121 个 API 候选页面，其中 5991 个页面结构化解析，130 个页面作为 fallback 文档页保留，生成 10022 个 entry、497 个 hook、151 个 class，失败转换为 0。
 
+override 文件是轻量 JSON patch，不需要重复完整 generated database 元数据：
+
+```json
+{
+  "version": "2026-06-local-corrections",
+  "entries": [
+    {
+      "path": "net.Start",
+      "kind": "function",
+      "realm": "shared",
+      "summary": "经过审查后的修正文档摘要。"
+    }
+  ]
+}
+```
+
+entry 按 `path` 合并，hook 按 `name` 合并，class 按 `name` 合并。
+
 ## 数据模型
 
 基础符号模型：

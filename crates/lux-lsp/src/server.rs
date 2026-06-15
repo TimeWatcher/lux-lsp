@@ -1038,6 +1038,15 @@ fn external_api_hover_markdown(
     path: &Path,
     offset: usize,
 ) -> Option<String> {
+    let file = analysis.file_by_path(path)?;
+    if let Some(method_path) = method_path_at_offset(&file.text, offset) {
+        let facts = GmodTypeFacts::from_text(&file.text);
+        if let Some(resolved_path) = resolve_typed_method_path(&facts, &method_path)
+            && let Some(entry) = api.entry(&resolved_path)
+        {
+            return Some(entry_markdown(entry));
+        }
+    }
     let symbol = analysis.symbol_at_path_offset(path, offset)?;
     let external = symbol.external_availability.as_ref()?;
     if matches!(external, luxc::module::RealmAvailability::UnknownExternal) {
@@ -1088,7 +1097,9 @@ fn signature_help_at(
         return Some(signature_help_from_signature(&hook.callback));
     }
     let call_path = call_path_before_cursor(text)?;
-    let entry = api.entry(&call_path)?;
+    let facts = GmodTypeFacts::from_text(&file.text);
+    let resolved_call_path = resolve_typed_method_path(&facts, &call_path).unwrap_or(call_path);
+    let entry = api.entry(&resolved_call_path)?;
     entry.signatures.first().map(signature_help_from_signature)
 }
 
@@ -1110,6 +1121,32 @@ fn call_path_before_cursor(text: &str) -> Option<String> {
         .next()
         .unwrap_or_default();
     (!token.is_empty()).then(|| token.to_string())
+}
+
+fn method_path_at_offset(text: &str, offset: usize) -> Option<String> {
+    let offset = offset.min(text.len());
+    let before = &text[..offset];
+    let after = &text[offset..];
+    let left = before
+        .rsplit(|ch: char| !(ch.is_ascii_alphanumeric() || matches!(ch, '_' | ':')))
+        .next()
+        .unwrap_or_default();
+    let right = after
+        .split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_'))
+        .next()
+        .unwrap_or_default();
+    let path = format!("{left}{right}");
+    path.contains(':').then_some(path)
+}
+
+fn resolve_typed_method_path(facts: &GmodTypeFacts, path: &str) -> Option<String> {
+    let (receiver, method) = path.split_once(':')?;
+    if receiver.is_empty() || method.is_empty() {
+        return None;
+    }
+    facts
+        .receiver_class(receiver)
+        .map(|class_name| format!("{class_name}:{method}"))
 }
 
 fn signature_help_from_signature(signature: &gmod_api_db::ApiSignature) -> SignatureHelp {
@@ -1441,8 +1478,9 @@ mod tests {
         CompletionContext, completion_context, encode_semantic_tokens, path_to_url, url_to_path,
     };
     use super::{
-        api_completion_candidates, hook_name_at_offset, infer_receiver_class,
-        manifest_section_insert_position, signature_help_at,
+        GmodTypeFacts, api_completion_candidates, hook_name_at_offset, infer_receiver_class,
+        manifest_section_insert_position, method_path_at_offset, resolve_typed_method_path,
+        signature_help_at,
     };
     use gmod_api_db::ApiIndex;
     use lsp_types::SemanticToken;
@@ -1525,6 +1563,27 @@ mod tests {
             .map(|candidate| candidate.label)
             .collect::<Vec<_>>();
         assert!(labels.iter().any(|label| label == "Nick"), "{labels:#?}");
+    }
+
+    #[test]
+    fn signature_help_uses_receiver_type_facts_for_method_calls() {
+        let api = ApiIndex::bundled();
+        let file = SourceFile::new(0, None, "local ply = LocalPlayer()\nply:Nick(");
+        let help = signature_help_at(&file, &api, file.text.len()).expect("signature help");
+        assert_eq!(help.signatures[0].label, "Player:Nick()");
+    }
+
+    #[test]
+    fn hover_method_path_uses_receiver_type_facts() {
+        let text = "local ply = LocalPlayer()\nply:Nick()";
+        let offset = text.find("Nick").expect("offset");
+        let path = method_path_at_offset(text, offset).expect("method path");
+        let facts = GmodTypeFacts::from_text(text);
+        assert_eq!(path, "ply:Nick");
+        assert_eq!(
+            resolve_typed_method_path(&facts, &path),
+            Some("Player:Nick".into())
+        );
     }
 
     #[test]

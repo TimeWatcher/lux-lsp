@@ -83,6 +83,25 @@ The current bundled manifest covers 6,335 official pages and 6,121 API candidate
 pages. It has 5,991 structured conversions, 130 fallback documentation pages,
 10,022 entries, 497 hooks, 151 classes, and zero failed conversions.
 
+Override files are lightweight JSON patches. They do not need to repeat the full
+generated database metadata:
+
+```json
+{
+  "version": "2026-06-local-corrections",
+  "entries": [
+    {
+      "path": "net.Start",
+      "kind": "function",
+      "realm": "shared",
+      "summary": "Corrected summary from reviewed project knowledge."
+    }
+  ]
+}
+```
+
+Entries are merged by `path`, hooks by `name`, and classes by `name`.
+
 ## Data Model
 
 Base symbol model:

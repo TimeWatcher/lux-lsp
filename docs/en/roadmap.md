@@ -38,7 +38,8 @@
   generated manifest covers 6,335 official pages and 6,121 API candidate pages:
   5,991 structured conversions, 130 fallback documentation pages, and zero
   failed conversions.
-- Done: add curated JSON override layers for known documentation corrections.
+- Done: add curated lightweight JSON override layers for known documentation
+  corrections.
 - Done: expose `luxc gmod api update` through the main compiler CLI.
 - VS Code command exposure is tracked in Phase 6 with the extension shell.
 
@@ -53,7 +54,7 @@
 - Done: add receiver/constructor-aware method completion for common GMod
   patterns such as `LocalPlayer()` and `vgui.Create("DButton")`.
 - Done: broaden receiver type propagation through local aliases and simple
-  function-return facts used by method completion.
+  function-return facts used by method completion, hover, and signature help.
 
 ## Phase 5: Realm Availability Engine
 

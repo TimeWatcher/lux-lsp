@@ -1056,17 +1056,28 @@ fn apply_override_files(database: &mut ApiDatabase, paths: &[PathBuf]) -> Result
     for path in paths {
         let text = fs::read_to_string(path)
             .map_err(|err| format!("failed to read override `{}`: {err}", path.display()))?;
-        let override_db: ApiDatabase = serde_json::from_str(&text)
+        let override_db: ApiOverrideFile = serde_json::from_str(&text)
             .map_err(|err| format!("failed to parse override `{}`: {err}", path.display()))?;
         merge_entries_by_path(&mut database.entries, override_db.entries);
         merge_hooks_by_name(&mut database.hooks, override_db.hooks);
         merge_classes_by_name(&mut database.classes, override_db.classes);
         database.overrides.push(ApiOverrideSource {
             path: path.display().to_string(),
-            version: override_db.version,
+            version: override_db.version.unwrap_or_else(|| "unversioned".into()),
         });
     }
     Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+struct ApiOverrideFile {
+    version: Option<String>,
+    #[serde(default)]
+    entries: Vec<ApiEntry>,
+    #[serde(default)]
+    hooks: Vec<HookEntry>,
+    #[serde(default)]
+    classes: Vec<ClassEntry>,
 }
 
 fn merge_entries_by_path(target: &mut Vec<ApiEntry>, overrides: Vec<ApiEntry>) {
@@ -1331,8 +1342,8 @@ impl IfEmpty for String {
 
 #[cfg(test)]
 mod tests {
-    use super::merge_entries_by_path;
     use super::{ApiRealm, ApiSource, PageListItem, WikiPage, source_for};
+    use super::{apply_override_files, merge_entries_by_path};
     use super::{parse_enum_blocks, parse_function_blocks, parse_realm, parse_type_blocks};
     use crate::Args;
     use gmod_api_db::{ApiEntry, ApiKind};
@@ -1495,5 +1506,48 @@ mod tests {
         );
         assert_eq!(entries[0].summary, "override");
         assert_eq!(entries[0].realm, ApiRealm::Server);
+    }
+
+    #[test]
+    fn lightweight_override_file_can_patch_database() {
+        let root = std::env::temp_dir().join(format!(
+            "lux_gmod_override_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).expect("override dir");
+        let override_path = root.join("override.json");
+        std::fs::write(
+            &override_path,
+            r#"{
+              "version": "test",
+              "entries": [{
+                "path": "net.Start",
+                "kind": "function",
+                "realm": "server",
+                "summary": "patched"
+              }]
+            }"#,
+        )
+        .expect("write override");
+
+        let mut database = gmod_api_db::ApiDatabase {
+            version: "base".into(),
+            generated_from: "test".into(),
+            generated_at: String::new(),
+            source_url: String::new(),
+            parser_version: String::new(),
+            coverage: None,
+            overrides: Vec::new(),
+            entries: Vec::new(),
+            hooks: Vec::new(),
+            classes: Vec::new(),
+        };
+        apply_override_files(&mut database, &[override_path]).expect("apply override");
+        assert_eq!(database.entries[0].summary, "patched");
+        assert_eq!(database.overrides[0].version, "test");
+        let _ = std::fs::remove_dir_all(root);
     }
 }
