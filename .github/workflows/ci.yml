@@ -23,12 +23,14 @@ jobs:
           repository: TimeWatcher/lux
           ref: ${{ steps.lux-ref.outputs.ref }}
           path: lux
+          submodules: recursive
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Prepare sibling path dependencies
         shell: bash
         run: |
           ln -s lux/compiler compiler
+          ln -s lux/packages packages
       - name: Test workspace
         run: cargo test --workspace --locked
         working-directory: lsp

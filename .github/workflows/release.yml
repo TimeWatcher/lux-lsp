@@ -45,6 +45,7 @@ jobs:
           repository: TimeWatcher/lux
           ref: ${{ steps.lux-ref.outputs.ref }}
           path: lux
+          submodules: recursive
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
@@ -54,12 +55,15 @@ jobs:
         shell: pwsh
         run: |
           $compilerTarget = (Resolve-Path -LiteralPath "lux/compiler").Path
+          $packagesTarget = (Resolve-Path -LiteralPath "lux/packages").Path
           New-Item -ItemType Junction -Path "compiler" -Target $compilerTarget
+          New-Item -ItemType Junction -Path "packages" -Target $packagesTarget
       - name: Prepare sibling path dependencies (Unix)
         if: runner.os != 'Windows'
         shell: bash
         run: |
           ln -s lux/compiler compiler
+          ln -s lux/packages packages
       - name: Build server
         working-directory: lsp
         run: cargo build --locked --release -p lux-lsp --target ${{ matrix.target }}
