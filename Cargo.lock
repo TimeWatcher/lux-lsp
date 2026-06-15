@@ -506,6 +506,7 @@ name = "luxc"
 version = "0.1.0"
 dependencies = [
  "gmod-api-db",
+ "gmod-api-update",
 ]
 
 [[package]]

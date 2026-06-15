@@ -226,11 +226,20 @@ pub struct ApiDatabase {
     #[serde(default)]
     pub coverage: Option<CoverageManifest>,
     #[serde(default)]
+    pub overrides: Vec<ApiOverrideSource>,
+    #[serde(default)]
     pub entries: Vec<ApiEntry>,
     #[serde(default)]
     pub hooks: Vec<HookEntry>,
     #[serde(default)]
     pub classes: Vec<ClassEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ApiOverrideSource {
+    pub path: String,
+    #[serde(default)]
+    pub version: String,
 }
 
 #[derive(Debug)]
@@ -368,6 +377,19 @@ impl ApiIndex {
             .values()
             .filter(|entry| !entry.path.contains('.') && !entry.path.contains(':'))
             .collect()
+    }
+
+    pub fn methods_for_class(&self, class_name: &str) -> Vec<&ApiEntry> {
+        let prefix = format!("{class_name}:");
+        self.entries
+            .iter()
+            .filter(|(path, entry)| path.starts_with(&prefix) && entry.kind == ApiKind::Method)
+            .map(|(_, entry)| entry)
+            .collect()
+    }
+
+    pub fn class_names(&self) -> Vec<&str> {
+        self.classes.keys().map(String::as_str).collect()
     }
 }
 
@@ -592,5 +614,6 @@ mod tests {
         assert!(index.entry("net.Start").is_some());
         assert!(index.entry("net.Broadcast").is_some());
         assert!(index.hook("PlayerInitialSpawn").is_some());
+        assert!(!index.methods_for_class("Player").is_empty());
     }
 }

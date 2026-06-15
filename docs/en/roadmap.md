@@ -38,8 +38,9 @@
   generated manifest covers 6,335 official pages and 6,121 API candidate pages:
   5,991 structured conversions, 130 fallback documentation pages, and zero
   failed conversions.
-- Remaining: add curated override layers for known documentation corrections.
-- Remaining: expose `lux gmod api update` and the matching VS Code command.
+- Done: add curated JSON override layers for known documentation corrections.
+- Done: expose `luxc gmod api update` through the main compiler CLI.
+- Remaining: expose the matching VS Code command.
 
 ## Phase 4: Document Hover And GLua Baseline
 
@@ -49,23 +50,22 @@
 - Done: support hook name hover and callback signatures.
 - Done: support API root/member completion and signature help from the shared
   database.
-- Remaining: add type-aware panel/class method completion based on receiver and
-  constructor inference.
+- Done: add receiver/constructor-aware method completion for common GMod
+  patterns such as `LocalPlayer()` and `vgui.Create("DButton")`.
+- Remaining: broaden type propagation beyond simple local constructor
+  assignments.
 
 ## Phase 5: Realm Availability Engine
 
 - Done: replace the old realm guard with `gmod-api-db`.
 - Done: share one query interface between compiler and LSP.
 - Done: support path-level realm annotations from the generated official data.
-- Support source extern declarations and package-level extern config.
-- Support unknown external allow/warn/error.
 - Done: support source extern declarations and unknown external
   allow/warn/error.
-- Remaining: support package-level extern config.
-- Partial: provide quick fixes for unknown external and official-docs actions for
-  realm mismatch.
-- Remaining: add edit-producing quick fixes for package extern config and export
-  realm widening.
+- Done: support package-level extern config from `lux.toml`.
+- Done: provide quick fixes for source extern declarations, package-level extern
+  entries, and official-docs actions for realm mismatch.
+- Remaining: add export realm widening quick fixes.
 
 ## Phase 6: VS Code Extension
 

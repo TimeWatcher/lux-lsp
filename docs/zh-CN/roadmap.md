@@ -27,8 +27,9 @@
 - 已完成：实现 `gmod-api-update`，从 Facepunch 官方 Wiki 页表抓取全量地址，下载单页 JSON，解析 Facepunch markup，并生成 coverage manifest。
 - 已完成：内置 generated 离线数据库。
 - 已完成：以官方页表作为覆盖率基准。当前 generated manifest 覆盖 6335 个官方页面和 6121 个 API 候选页面，其中 5991 个页面结构化解析、130 个页面作为 fallback 文档页保留，失败转换为 0。
-- 待完成：加入 curated override 层，用于修正官方文档中已知的不精确信息。
-- 待完成：提供 `lux gmod api update` 和 VS Code 更新命令。
+- 已完成：加入 curated JSON override 层，用于修正官方文档中已知的不精确信息。
+- 已完成：通过主 compiler CLI 提供 `luxc gmod api update`。
+- 待完成：提供对应 VS Code 更新命令。
 
 ## Phase 4：Document Hover 和 GLua Experience Baseline
 
@@ -36,7 +37,8 @@
 - 已完成：官方页面提供的说明、参数、返回、warning、note、示例代码和链接会进入 hover。
 - 已完成：支持 hook 名 hover 和 callback 签名。
 - 已完成：API root/member completion 和 signature help 已接入同一份数据库。
-- 待完成：基于 receiver 和 constructor 推断补齐 panel/class method completion。
+- 已完成：为 `LocalPlayer()`、`vgui.Create("DButton")` 等常见模式提供 receiver/constructor 感知的方法补全。
+- 待完成：把类型传播扩展到简单 local constructor assignment 之外。
 
 ## Phase 5：Realm Availability Engine
 
@@ -44,9 +46,9 @@
 - 已完成：compiler 和 LSP 共用同一查询接口。
 - 已完成：从 generated 官方数据支持 path-level realm。
 - 已完成：支持 extern 源码声明和 unknown external allow/warn/error。
-- 待完成：支持 package-level extern 配置。
-- 部分完成：unknown external quick fix 和 realm mismatch 官方文档 action 已有。
-- 待完成：为 package extern config 和 export realm widening 补齐可编辑 quick fix。
+- 已完成：支持 `lux.toml` package-level extern 配置。
+- 已完成：为 source extern、package-level extern 和 realm mismatch 官方文档 action 提供 quick fix。
+- 待完成：为 export realm widening 补齐 quick fix。
 
 ## Phase 6：VS Code Extension
 

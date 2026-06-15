@@ -59,16 +59,19 @@ cargo run -p lux-lsp
 Update the bundled official GMod API database:
 
 ```powershell
-cargo run -p gmod-api-update -- `
+luxc gmod api update `
   --out crates\gmod-api-db\data\generated\gmod_api.json `
   --coverage-out crates\gmod-api-db\data\generated\coverage_manifest.json `
   --cache-dir target\gmod-api-cache
 ```
 
-The updater uses `https://wiki.facepunch.com/gmod/~pagelist?format=json` as the
-coverage baseline, downloads official page JSON payloads, converts Facepunch
-markup, and fails if any API candidate page cannot be converted unless
-`--allow-failures` is explicitly passed for parser development.
+The standalone development entry point is still available as
+`cargo run -p gmod-api-update -- ...`. Both paths use the same Rust updater
+library. The updater uses `https://wiki.facepunch.com/gmod/~pagelist?format=json`
+as the coverage baseline, downloads official page JSON payloads, converts
+Facepunch markup, applies optional `--override <json>` files, and fails if any
+API candidate page cannot be converted unless `--allow-failures` is explicitly
+passed for parser development.
 
 In the main Lux repository, this repository is checked out as the `lsp`
 submodule. `lux-lsp` depends on the sibling `../compiler` crate, so the

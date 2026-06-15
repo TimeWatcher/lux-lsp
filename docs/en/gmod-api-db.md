@@ -57,11 +57,14 @@ Every generated database must record:
 Current updater command:
 
 ```powershell
-cargo run -p gmod-api-update -- `
+luxc gmod api update `
   --out crates\gmod-api-db\data\generated\gmod_api.json `
   --coverage-out crates\gmod-api-db\data\generated\coverage_manifest.json `
   --cache-dir target\gmod-api-cache
 ```
+
+For updater development inside the LSP workspace, the same implementation is
+also available as `cargo run -p gmod-api-update -- ...`.
 
 Default rules:
 
@@ -70,6 +73,8 @@ Default rules:
   parsed.
 - `--allow-failures` is only for parser development.
 - The generated database and coverage manifest must be committed together.
+- Curated corrections are applied with `--override <json>` files after official
+  data generation. They must be reviewed and traceable.
 - The coverage manifest must report official page count, API candidate count,
   structured conversions, fallback documentation pages, skipped pages, and
   failed pages.

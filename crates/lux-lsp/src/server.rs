@@ -338,9 +338,11 @@ impl Server {
                     .unwrap_or(RealmSet::SHARED),
             ),
             CompletionContext::ExportList => analysis.exportable_bindings(&path),
-            CompletionContext::ApiMember { prefix } => {
-                api_completion_candidates(&self.gmod_api, &prefix)
-            }
+            CompletionContext::ApiMember { prefix } => api_completion_candidates(
+                &self.gmod_api,
+                &prefix,
+                analysis.file_by_path(&path).map(|file| file.text.as_str()),
+            ),
             CompletionContext::General => {
                 let mut candidates = general_binding_completions(analysis, &path);
                 candidates.extend(api_root_completion_candidates(&self.gmod_api));
@@ -475,6 +477,7 @@ impl Server {
                 &path,
                 &params.text_document.uri,
             ))
+            .chain(manifest_extern_code_actions(analysis, &path, &self.root))
             .collect::<Vec<_>>();
         json_result(Some(actions))
     }
@@ -677,6 +680,115 @@ fn find_manifest(root: &Path) -> Option<PathBuf> {
             return None;
         }
     }
+}
+
+fn manifest_extern_code_actions(
+    analysis: &ProjectAnalysis,
+    path: &Path,
+    root: &Path,
+) -> Vec<CodeActionOrCommand> {
+    let Some(manifest_path) = find_manifest(root) else {
+        return Vec::new();
+    };
+    analysis
+        .diagnostics_for_path(path)
+        .into_iter()
+        .filter(|diagnostic| diagnostic.code.as_deref() == Some("REALM_UNKNOWN"))
+        .filter_map(|diagnostic| diagnostic_symbol_name(&diagnostic.message))
+        .flat_map(|symbol| {
+            ["shared", "client", "server"]
+                .into_iter()
+                .map(move |realm| (symbol.clone(), realm))
+        })
+        .filter_map(|(symbol, realm)| {
+            let uri = path_to_url(&manifest_path)?;
+            let edit = manifest_extern_edit(&manifest_path, &symbol, realm);
+            let mut changes = HashMap::<Uri, Vec<TextEdit>>::new();
+            changes.insert(uri, vec![edit]);
+            Some(CodeActionOrCommand::CodeAction(CodeAction {
+                title: format!("Add package extern {realm} {symbol}"),
+                kind: Some(CodeActionKind::QUICKFIX),
+                diagnostics: None,
+                edit: Some(lsp_types::WorkspaceEdit {
+                    changes: Some(changes),
+                    document_changes: None,
+                    change_annotations: None,
+                }),
+                command: None,
+                is_preferred: None,
+                disabled: None,
+                data: None,
+            }))
+        })
+        .collect()
+}
+
+fn manifest_extern_edit(manifest_path: &Path, symbol: &str, realm: &str) -> TextEdit {
+    let text = std::fs::read_to_string(manifest_path).unwrap_or_default();
+    let escaped_symbol = symbol.replace('\\', "\\\\").replace('"', "\\\"");
+    let new_entry = format!("{escaped_symbol} = \"{realm}\"\n");
+    if let Some((line, character)) = manifest_section_insert_position(&text, "target.gmod.extern") {
+        TextEdit {
+            range: Range {
+                start: Position { line, character },
+                end: Position { line, character },
+            },
+            new_text: new_entry,
+        }
+    } else {
+        let prefix = if text.trim().is_empty() || text.ends_with('\n') {
+            ""
+        } else {
+            "\n"
+        };
+        TextEdit {
+            range: end_of_document_range(&text),
+            new_text: format!("{prefix}\n[target.gmod.extern]\n{new_entry}"),
+        }
+    }
+}
+
+fn manifest_section_insert_position(text: &str, section: &str) -> Option<(u32, u32)> {
+    let mut in_section = false;
+    let mut insert_line = None;
+    for (index, line) in text.lines().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            if in_section {
+                return Some((index as u32, 0));
+            }
+            in_section = trimmed == format!("[{section}]");
+        } else if in_section && !trimmed.is_empty() {
+            insert_line = Some(index + 1);
+        }
+    }
+    in_section.then_some((
+        insert_line.unwrap_or_else(|| text.lines().count()) as u32,
+        0,
+    ))
+}
+
+fn end_of_document_range(text: &str) -> Range {
+    let line_count = text.lines().count();
+    let last_line_len = text.lines().last().map(utf16_len).unwrap_or(0);
+    let line = if text.ends_with('\n') {
+        line_count as u32
+    } else {
+        line_count.saturating_sub(1) as u32
+    };
+    let character = if text.ends_with('\n') {
+        0
+    } else {
+        last_line_len as u32
+    };
+    Range {
+        start: Position { line, character },
+        end: Position { line, character },
+    }
+}
+
+fn utf16_len(text: &str) -> usize {
+    text.encode_utf16().count()
 }
 
 fn lsp_diagnostic(diagnostic: AnalysisDiagnostic) -> Diagnostic {
@@ -1080,7 +1192,7 @@ fn api_member_prefix(prefix: &str) -> Option<String> {
         .next()
         .unwrap_or_default();
     if token.ends_with('.') || token.ends_with(':') {
-        return Some(token.trim_end_matches(['.', ':']).to_string());
+        return Some(token.to_string());
     }
     token
         .rfind(['.', ':'])
@@ -1117,7 +1229,32 @@ fn api_root_completion_candidates(api: &ApiIndex) -> Vec<CompletionCandidate> {
     api.roots().into_iter().map(api_entry_candidate).collect()
 }
 
-fn api_completion_candidates(api: &ApiIndex, prefix: &str) -> Vec<CompletionCandidate> {
+fn api_completion_candidates(
+    api: &ApiIndex,
+    prefix: &str,
+    file_text: Option<&str>,
+) -> Vec<CompletionCandidate> {
+    if prefix.ends_with(':') {
+        let receiver = prefix.trim_end_matches(':');
+        if let Some(class_name) = file_text.and_then(|text| infer_receiver_class(text, receiver)) {
+            let candidates = api
+                .methods_for_class(&class_name)
+                .into_iter()
+                .map(api_entry_candidate)
+                .collect::<Vec<_>>();
+            if !candidates.is_empty() {
+                return candidates;
+            }
+        }
+        let candidates = api
+            .methods_for_class(receiver)
+            .into_iter()
+            .map(api_entry_candidate)
+            .collect::<Vec<_>>();
+        if !candidates.is_empty() {
+            return candidates;
+        }
+    }
     let needle = if prefix.ends_with('.') || prefix.ends_with(':') {
         prefix.to_string()
     } else {
@@ -1127,6 +1264,34 @@ fn api_completion_candidates(api: &ApiIndex, prefix: &str) -> Vec<CompletionCand
         .into_iter()
         .map(api_entry_candidate)
         .collect()
+}
+
+fn infer_receiver_class(text: &str, receiver: &str) -> Option<String> {
+    let assignment_prefix = format!("local {receiver} =");
+    text.lines().rev().find_map(|line| {
+        let line = line.trim();
+        let expr = line.strip_prefix(&assignment_prefix)?.trim_start();
+        if expr.starts_with("LocalPlayer(") || expr.starts_with("Player(") {
+            Some("Player".to_string())
+        } else if expr.starts_with("Entity(") {
+            Some("Entity".to_string())
+        } else if let Some(rest) = expr.strip_prefix("vgui.Create(") {
+            quoted_first_arg(rest).or_else(|| Some("Panel".to_string()))
+        } else {
+            None
+        }
+    })
+}
+
+fn quoted_first_arg(text: &str) -> Option<String> {
+    let text = text.trim_start();
+    let quote = text.chars().next()?;
+    if quote != '"' && quote != '\'' {
+        return None;
+    }
+    let rest = &text[quote.len_utf8()..];
+    let end = rest.find(quote)?;
+    Some(rest[..end].to_string())
 }
 
 fn api_entry_candidate(entry: &gmod_api_db::ApiEntry) -> CompletionCandidate {
@@ -1190,7 +1355,10 @@ mod tests {
     use super::{
         CompletionContext, completion_context, encode_semantic_tokens, path_to_url, url_to_path,
     };
-    use super::{hook_name_at_offset, signature_help_at};
+    use super::{
+        api_completion_candidates, hook_name_at_offset, infer_receiver_class,
+        manifest_section_insert_position, signature_help_at,
+    };
     use gmod_api_db::ApiIndex;
     use lsp_types::SemanticToken;
     use luxc::analysis::{AnalysisSemanticToken, SemanticTokenKind};
@@ -1215,7 +1383,7 @@ mod tests {
         assert_eq!(
             completion_context("net.", ""),
             CompletionContext::ApiMember {
-                prefix: "net".into()
+                prefix: "net.".into()
             }
         );
         assert_eq!(
@@ -1244,6 +1412,33 @@ mod tests {
             "net.Start(messageName, unreliable = false)"
         );
         assert_eq!(help.signatures[0].parameters.as_ref().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn manifest_extern_insert_position_targets_existing_section() {
+        let text = "source_root = \"src\"\n\n[target.gmod.extern]\nA = \"shared\"\n\n[gmod]\naddon_root = \".\"\n";
+        assert_eq!(
+            manifest_section_insert_position(text, "target.gmod.extern"),
+            Some((5, 0))
+        );
+    }
+
+    #[test]
+    fn infers_gmod_receiver_class_from_common_constructors() {
+        let text = "local ply = LocalPlayer()\nlocal button = vgui.Create(\"DButton\")\n";
+        assert_eq!(infer_receiver_class(text, "ply"), Some("Player".into()));
+        assert_eq!(infer_receiver_class(text, "button"), Some("DButton".into()));
+    }
+
+    #[test]
+    fn api_completion_uses_receiver_class_methods_for_colon_calls() {
+        let api = ApiIndex::bundled();
+        let text = "local ply = LocalPlayer()\nply:";
+        let labels = api_completion_candidates(&api, "ply:", Some(text))
+            .into_iter()
+            .map(|candidate| candidate.label)
+            .collect::<Vec<_>>();
+        assert!(labels.iter().any(|label| label == "Nick"), "{labels:#?}");
     }
 
     #[test]

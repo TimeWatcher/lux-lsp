@@ -39,13 +39,13 @@ cargo run -p lux-lsp
 更新内置官方 GMod API 数据库：
 
 ```powershell
-cargo run -p gmod-api-update -- `
+luxc gmod api update `
   --out crates\gmod-api-db\data\generated\gmod_api.json `
   --coverage-out crates\gmod-api-db\data\generated\coverage_manifest.json `
   --cache-dir target\gmod-api-cache
 ```
 
-updater 以 `https://wiki.facepunch.com/gmod/~pagelist?format=json` 作为覆盖率基准，下载官方单页 JSON，转换 Facepunch markup；只要 API 候选页面抓取或转换失败，命令就会失败。开发 parser 时可以显式加 `--allow-failures`。
+独立开发入口仍然可用：`cargo run -p gmod-api-update -- ...`。两条路径共用同一个 Rust updater library。updater 以 `https://wiki.facepunch.com/gmod/~pagelist?format=json` 作为覆盖率基准，下载官方单页 JSON，转换 Facepunch markup，并可通过 `--override <json>` 叠加可追溯修正；只要 API 候选页面抓取或转换失败，命令就会失败。开发 parser 时可以显式加 `--allow-failures`。
 
 在 Lux 主仓库中，本仓库作为 `lsp` submodule 存在。`lux-lsp` 依赖相邻的 `../compiler` crate，因此推荐从主仓库克隆并初始化 submodule 后开发。
 
