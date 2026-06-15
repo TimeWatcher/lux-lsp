@@ -40,19 +40,22 @@ jobs:
         with:
           repository: TimeWatcher/lux
           path: lux
-          submodules: recursive
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
-      - name: Prepare sibling compiler dependency (Windows)
+      - name: Prepare sibling path dependencies (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: New-Item -ItemType Junction -Path compiler -Target lux/compiler
-      - name: Prepare sibling compiler dependency (Unix)
+        run: |
+          New-Item -ItemType Junction -Path compiler -Target lux/compiler
+          New-Item -ItemType Junction -Path lsp -Target lux-lsp
+      - name: Prepare sibling path dependencies (Unix)
         if: runner.os != 'Windows'
         shell: bash
-        run: ln -s lux/compiler compiler
+        run: |
+          ln -s lux/compiler compiler
+          ln -s lux-lsp lsp
       - name: Build server
         working-directory: lux-lsp
         run: cargo build --locked --release -p lux-lsp --target ${{ matrix.target }}
@@ -88,7 +91,6 @@ jobs:
         with:
           repository: TimeWatcher/lux
           path: lux
-          submodules: recursive
       - uses: actions/setup-node@v4
         with:
           node-version: 20

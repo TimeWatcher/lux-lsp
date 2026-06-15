@@ -18,12 +18,13 @@ jobs:
         with:
           repository: TimeWatcher/lux
           path: lux
-          submodules: recursive
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Prepare sibling compiler dependency
+      - name: Prepare sibling path dependencies
         shell: bash
-        run: ln -s lux/compiler compiler
+        run: |
+          ln -s lux/compiler compiler
+          ln -s lux-lsp lsp
       - name: Test workspace
         run: cargo test --workspace --locked
         working-directory: lux-lsp
@@ -39,15 +40,16 @@ jobs:
         with:
           repository: TimeWatcher/lux
           path: lux
-          submodules: recursive
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
           cache-dependency-path: lux-lsp/vscode-lux/package-lock.json
-      - name: Prepare sibling compiler dependency
+      - name: Prepare sibling path dependencies
         shell: bash
-        run: ln -s lux/compiler compiler
+        run: |
+          ln -s lux/compiler compiler
+          ln -s lux-lsp lsp
       - name: Install extension dependencies
         working-directory: lux-lsp/vscode-lux
         run: npm ci
