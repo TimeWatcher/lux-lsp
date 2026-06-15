@@ -40,7 +40,7 @@
   failed conversions.
 - Done: add curated JSON override layers for known documentation corrections.
 - Done: expose `luxc gmod api update` through the main compiler CLI.
-- Remaining: expose the matching VS Code command.
+- VS Code command exposure is tracked in Phase 6 with the extension shell.
 
 ## Phase 4: Document Hover And GLua Baseline
 
@@ -52,8 +52,8 @@
   database.
 - Done: add receiver/constructor-aware method completion for common GMod
   patterns such as `LocalPlayer()` and `vgui.Create("DButton")`.
-- Remaining: broaden type propagation beyond simple local constructor
-  assignments.
+- Done: broaden receiver type propagation through local aliases and simple
+  function-return facts used by method completion.
 
 ## Phase 5: Realm Availability Engine
 
@@ -65,7 +65,9 @@
 - Done: support package-level extern config from `lux.toml`.
 - Done: provide quick fixes for source extern declarations, package-level extern
   entries, and official-docs actions for realm mismatch.
-- Remaining: add export realm widening quick fixes.
+- Done: add export realm widening quick fixes that narrow invalid `export
+  shared` declarations to the binding's actual realm when that rewrite is
+  unambiguous.
 
 ## Phase 6: VS Code Extension
 

@@ -1236,7 +1236,10 @@ fn api_completion_candidates(
 ) -> Vec<CompletionCandidate> {
     if prefix.ends_with(':') {
         let receiver = prefix.trim_end_matches(':');
-        if let Some(class_name) = file_text.and_then(|text| infer_receiver_class(text, receiver)) {
+        if let Some(class_name) = file_text.and_then(|text| {
+            let facts = GmodTypeFacts::from_text(text);
+            facts.receiver_class(receiver)
+        }) {
             let candidates = api
                 .methods_for_class(&class_name)
                 .into_iter()
@@ -1267,20 +1270,102 @@ fn api_completion_candidates(
 }
 
 fn infer_receiver_class(text: &str, receiver: &str) -> Option<String> {
-    let assignment_prefix = format!("local {receiver} =");
-    text.lines().rev().find_map(|line| {
-        let line = line.trim();
-        let expr = line.strip_prefix(&assignment_prefix)?.trim_start();
+    GmodTypeFacts::from_text(text).receiver_class(receiver)
+}
+
+#[derive(Debug, Default)]
+struct GmodTypeFacts {
+    locals: HashMap<String, String>,
+    functions: HashMap<String, String>,
+}
+
+impl GmodTypeFacts {
+    fn from_text(text: &str) -> Self {
+        let mut facts = Self::default();
+        for line in text.lines() {
+            facts.learn_line(line.trim());
+        }
+        facts
+    }
+
+    fn receiver_class(&self, receiver: &str) -> Option<String> {
+        self.locals
+            .get(receiver)
+            .cloned()
+            .or_else(|| self.functions.get(receiver).cloned())
+            .or_else(|| gmod_constructor_class(receiver).map(str::to_string))
+    }
+
+    fn learn_line(&mut self, line: &str) {
+        if line.starts_with("--") || line.is_empty() {
+            return;
+        }
+        if let Some(rest) = line.strip_prefix("fn ")
+            && let Some((name, expr)) = split_function_expr(rest)
+            && let Some(class_name) = self.class_for_expr(expr)
+        {
+            self.functions.insert(name.to_string(), class_name);
+            return;
+        }
+        if let Some(rest) = line.strip_prefix("local ") {
+            self.learn_assignment(rest);
+            return;
+        }
+        self.learn_assignment(line);
+    }
+
+    fn learn_assignment(&mut self, input: &str) {
+        let Some((name, expr)) = input.split_once('=') else {
+            return;
+        };
+        let name = name.trim();
+        if !is_simple_ident(name) {
+            return;
+        }
+        if let Some(class_name) = self.class_for_expr(expr.trim()) {
+            self.locals.insert(name.to_string(), class_name);
+        }
+    }
+
+    fn class_for_expr(&self, expr: &str) -> Option<String> {
+        let expr = expr.trim();
         if expr.starts_with("LocalPlayer(") || expr.starts_with("Player(") {
             Some("Player".to_string())
         } else if expr.starts_with("Entity(") {
             Some("Entity".to_string())
         } else if let Some(rest) = expr.strip_prefix("vgui.Create(") {
             quoted_first_arg(rest).or_else(|| Some("Panel".to_string()))
+        } else if let Some(name) = expr.strip_suffix("()").filter(|name| is_simple_ident(name)) {
+            self.functions.get(name).cloned()
+        } else if is_simple_ident(expr) {
+            self.locals.get(expr).cloned()
         } else {
             None
         }
-    })
+    }
+}
+
+fn split_function_expr(input: &str) -> Option<(&str, &str)> {
+    let (name_and_args, expr) = input.split_once('=')?;
+    let name = name_and_args.split('(').next()?.trim();
+    is_simple_ident(name).then_some((name, expr.trim()))
+}
+
+fn is_simple_ident(value: &str) -> bool {
+    let mut chars = value.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    (first.is_ascii_alphabetic() || first == '_')
+        && chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+}
+
+fn gmod_constructor_class(name: &str) -> Option<&'static str> {
+    match name {
+        "LocalPlayer" | "Player" => Some("Player"),
+        "Entity" => Some("Entity"),
+        _ => None,
+    }
 }
 
 fn quoted_first_arg(text: &str) -> Option<String> {
@@ -1425,8 +1510,9 @@ mod tests {
 
     #[test]
     fn infers_gmod_receiver_class_from_common_constructors() {
-        let text = "local ply = LocalPlayer()\nlocal button = vgui.Create(\"DButton\")\n";
+        let text = "fn current() = LocalPlayer()\nlocal ply = current()\nlocal alias = ply\nlocal button = vgui.Create(\"DButton\")\n";
         assert_eq!(infer_receiver_class(text, "ply"), Some("Player".into()));
+        assert_eq!(infer_receiver_class(text, "alias"), Some("Player".into()));
         assert_eq!(infer_receiver_class(text, "button"), Some("DButton".into()));
     }
 
