@@ -54,22 +54,22 @@
 
 ## Phase 6：VS Code Extension
 
-- TextMate grammar。
-- Semantic token theme scopes。
-- snippets。
-- settings。
-- commands。
-- quick fix、source action 和 workspace edit UX。
-- server distribution。
-- VSIX package。
+- 已完成：`vscode-lux` 提供 TextMate grammar 和 language configuration。
+- 已完成：把 LSP semantic token types 映射到稳定 VS Code scope。
+- 已完成：提供 import、export、realm declaration、realm block、enum、match、extern 和 hook callback snippets。
+- 已完成：提供 server path、compiler path、文档 URL、trace、development fallback 等设置。
+- 已完成：提供重启 server、打开文档、打开 GMod 文档、更新 API 数据库、编译项目、格式化文档、显示 module exports、显示 active realm、显示 GMod API 覆盖率等命令。
+- 已完成：quick-fix command 通过 VS Code command 和 LSP `workspace/executeCommand` 运行；TypeScript 扩展不重复实现 Lux resolver。
+- 已完成：server binary 查找顺序为用户配置、VSIX 内置、PATH、显式 development cargo fallback。
+- 已完成：使用 `@vscode/vsce` 打包 VSIX。
 
 ## Phase 7：Release
 
-- GitHub Actions 构建 LSP server 二进制。
-- GitHub Release 附带预构建 server。
-- 发布 VSIX。
-- 文档站加入 LSP 和 VS Code 安装页面。
-- Lux 主仓库 README 链接到 LSP 仓库。
+- 已完成：GitHub Actions 构建 Windows、Linux 和 macOS 的 LSP server 二进制。
+- 已完成：tagged release 附带预构建 server archive。
+- 已完成：release workflow 打包内置 server binary 的 VSIX。
+- 已完成：文档站加入 LSP 和 VS Code 安装页面。
+- 已完成：Lux 主仓库 README 已链接到 LSP 仓库和公开文档。
 
 ## 不做的事
 

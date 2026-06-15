@@ -8,21 +8,21 @@ use lsp_types::notification::{
     Notification as LspNotification, PublishDiagnostics,
 };
 use lsp_types::request::{
-    CodeActionRequest, Completion, Formatting, GotoDefinition, HoverRequest, Request as LspRequest,
-    SemanticTokensFullRequest, SignatureHelpRequest,
+    CodeActionRequest, Completion, ExecuteCommand, Formatting, GotoDefinition, HoverRequest,
+    Request as LspRequest, SemanticTokensFullRequest, SignatureHelpRequest,
 };
 use lsp_types::{
     CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams, CompletionItem,
     CompletionItemKind, CompletionOptions, CompletionParams, CompletionResponse, Diagnostic,
     DiagnosticRelatedInformation, DiagnosticSeverity, DidChangeTextDocumentParams,
     DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
-    DocumentFormattingParams, GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents,
-    HoverParams, InitializeParams, InitializeResult, Location, MarkupContent, MarkupKind, OneOf,
-    ParameterInformation, ParameterLabel, Position, PublishDiagnosticsParams, Range, SemanticToken,
-    SemanticTokenType, SemanticTokens, SemanticTokensLegend, SemanticTokensOptions,
-    SemanticTokensParams, SemanticTokensResult, ServerCapabilities, SignatureHelp,
-    SignatureHelpOptions, SignatureInformation, TextDocumentSyncCapability, TextDocumentSyncKind,
-    TextEdit, Uri, WorkDoneProgressOptions,
+    DocumentFormattingParams, ExecuteCommandOptions, ExecuteCommandParams, GotoDefinitionParams,
+    GotoDefinitionResponse, Hover, HoverContents, HoverParams, InitializeParams, InitializeResult,
+    Location, MarkupContent, MarkupKind, OneOf, ParameterInformation, ParameterLabel, Position,
+    PublishDiagnosticsParams, Range, SemanticToken, SemanticTokenType, SemanticTokens,
+    SemanticTokensLegend, SemanticTokensOptions, SemanticTokensParams, SemanticTokensResult,
+    ServerCapabilities, SignatureHelp, SignatureHelpOptions, SignatureInformation,
+    TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Uri, WorkDoneProgressOptions,
 };
 use luxc::analysis::{
     AnalysisCodeAction, AnalysisConfig, AnalysisDiagnostic, AnalysisEditKind, AnalysisFile,
@@ -72,6 +72,15 @@ fn server_capabilities() -> InitializeResult {
             definition_provider: Some(OneOf::Left(true)),
             document_formatting_provider: Some(OneOf::Left(true)),
             code_action_provider: Some(lsp_types::CodeActionProviderCapability::Simple(true)),
+            execute_command_provider: Some(ExecuteCommandOptions {
+                commands: vec![
+                    "lux.showModuleExports".into(),
+                    "lux.showActiveRealm".into(),
+                    "lux.gmodApiCoverage".into(),
+                    "lux.reloadWorkspace".into(),
+                ],
+                work_done_progress_options: WorkDoneProgressOptions::default(),
+            }),
             semantic_tokens_provider: Some(
                 lsp_types::SemanticTokensServerCapabilities::SemanticTokensOptions(
                     SemanticTokensOptions {
@@ -188,6 +197,10 @@ impl Server {
                 None => return Ok(()),
             };
         let request = match self.try_request::<CodeActionRequest>(request, Self::code_actions)? {
+            Some(request) => request,
+            None => return Ok(()),
+        };
+        let request = match self.try_request::<ExecuteCommand>(request, Self::execute_command)? {
             Some(request) => request,
             None => return Ok(()),
         };
@@ -482,6 +495,35 @@ impl Server {
         json_result(Some(actions))
     }
 
+    fn execute_command(
+        &mut self,
+        params: ExecuteCommandParams,
+    ) -> Result<serde_json::Value, String> {
+        match params.command.as_str() {
+            "lux.showModuleExports" => {
+                let Some(analysis) = self.analysis() else {
+                    return json_result(CommandResult::message("Lux analysis is not ready."));
+                };
+                let command = CommandDocumentPosition::from_arguments(&params.arguments)?;
+                json_result(module_exports_command(analysis, command.as_ref()))
+            }
+            "lux.showActiveRealm" => {
+                let Some(analysis) = self.analysis() else {
+                    return json_result(CommandResult::message("Lux analysis is not ready."));
+                };
+                let command = CommandDocumentPosition::from_arguments(&params.arguments)?;
+                json_result(active_realm_command(analysis, command.as_ref()))
+            }
+            "lux.gmodApiCoverage" => json_result(gmod_api_coverage_command(&self.gmod_api)),
+            "lux.reloadWorkspace" => {
+                self.workspace = None;
+                self.reanalyze_and_publish();
+                json_result(CommandResult::message("Lux workspace analysis reloaded."))
+            }
+            other => Err(format!("unsupported command `{other}`")),
+        }
+    }
+
     fn analysis_and_offset(
         &self,
         uri: &Uri,
@@ -646,6 +688,200 @@ impl BindingKindName for luxc::resolve::BindingKind {
             Self::Import => "import",
             Self::MacroImport => "macro import",
         }
+    }
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CommandDocumentPosition {
+    uri: Uri,
+    line: Option<u32>,
+    character: Option<u32>,
+}
+
+impl CommandDocumentPosition {
+    fn from_arguments(arguments: &[serde_json::Value]) -> Result<Option<Self>, String> {
+        let Some(value) = arguments.first() else {
+            return Ok(None);
+        };
+        serde_json::from_value(value.clone())
+            .map(Some)
+            .map_err(|err| format!("invalid command document position: {err}"))
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CommandResult {
+    kind: String,
+    title: String,
+    markdown: String,
+    items: Vec<CommandItem>,
+}
+
+impl CommandResult {
+    fn message(message: impl Into<String>) -> Self {
+        let message = message.into();
+        Self {
+            kind: "message".into(),
+            title: "Lux".into(),
+            markdown: message.clone(),
+            items: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CommandItem {
+    label: String,
+    detail: String,
+    description: String,
+    markdown: String,
+}
+
+fn module_exports_command(
+    analysis: &ProjectAnalysis,
+    position: Option<&CommandDocumentPosition>,
+) -> CommandResult {
+    let module = position
+        .and_then(|position| url_to_path(&position.uri))
+        .and_then(|path| analysis.module_for_path(&path))
+        .or_else(|| analysis.modules.first());
+    let Some(module) = module else {
+        return CommandResult::message("No Lux module is available in this workspace.");
+    };
+    let mut items = module
+        .exports
+        .iter()
+        .map(|export| CommandItem {
+            label: export.name.clone(),
+            detail: export.realms.display_name().into(),
+            description: module.id.as_str().into(),
+            markdown: format!(
+                "`{}` exported from `{}` for **{}**.",
+                export.name,
+                module.id,
+                export.realms.display_name()
+            ),
+        })
+        .collect::<Vec<_>>();
+    items.sort_by(|a, b| a.label.cmp(&b.label));
+    let markdown = if items.is_empty() {
+        format!("Module `{}` has no public exports.", module.id)
+    } else {
+        let mut lines = vec![format!("Module `{}` exports:", module.id), String::new()];
+        for item in &items {
+            lines.push(format!("- `{}` - {}", item.label, item.detail));
+        }
+        lines.join("\n")
+    };
+    CommandResult {
+        kind: "moduleExports".into(),
+        title: format!("Lux Exports: {}", module.id),
+        markdown,
+        items,
+    }
+}
+
+fn active_realm_command(
+    analysis: &ProjectAnalysis,
+    position: Option<&CommandDocumentPosition>,
+) -> CommandResult {
+    let Some(position) = position else {
+        return CommandResult::message("No active editor position was provided.");
+    };
+    let Some(path) = url_to_path(&position.uri) else {
+        return CommandResult::message("The active editor is not a file URI.");
+    };
+    let line = position.line.unwrap_or(0) as usize;
+    let character = position.character.unwrap_or(0) as usize;
+    let Some(realms) = analysis.active_realms_at_position(&path, line, character) else {
+        return CommandResult::message("No Lux realm information is available at this position.");
+    };
+    let module_id = analysis
+        .module_for_path(&path)
+        .map(|module| module.id.as_str().to_string())
+        .unwrap_or_else(|| "<unknown module>".into());
+    let markdown = format!(
+        "Active Lux realm at `{}`:{}:{} is **{}**.",
+        path.display(),
+        line + 1,
+        character + 1,
+        realms.display_name()
+    );
+    CommandResult {
+        kind: "activeRealm".into(),
+        title: "Lux Active Realm".into(),
+        markdown: markdown.clone(),
+        items: vec![CommandItem {
+            label: realms.display_name().into(),
+            detail: module_id,
+            description: path.display().to_string(),
+            markdown,
+        }],
+    }
+}
+
+fn gmod_api_coverage_command(api: &ApiIndex) -> CommandResult {
+    let database = api.database();
+    let coverage = database.coverage.as_ref();
+    let document_pages = coverage
+        .map(|coverage| coverage.document_page_count)
+        .unwrap_or_else(|| database.documents.len());
+    let official_pages = coverage
+        .map(|coverage| coverage.official_page_count)
+        .unwrap_or(document_pages);
+    let api_candidates = coverage
+        .map(|coverage| coverage.api_candidate_count)
+        .unwrap_or_default();
+    let structured_pages = coverage
+        .map(|coverage| coverage.structured_page_count)
+        .unwrap_or_default();
+    let fallback_pages = coverage
+        .map(|coverage| coverage.fallback_page_count)
+        .unwrap_or_default();
+    let failed_pages = coverage
+        .map(|coverage| coverage.failed_page_count)
+        .unwrap_or_default();
+    let markdown = format!(
+        "# GMod API Database\n\n- Official pages: {}\n- Document records: {}\n- API candidate pages: {}\n- Structured API pages: {}\n- Fallback pages: {}\n- Failed pages: {}\n- Entries: {}\n- Hooks: {}\n- Classes: {}\n- Source: `{}`\n- Parser: `{}`",
+        official_pages,
+        document_pages,
+        api_candidates,
+        structured_pages,
+        fallback_pages,
+        failed_pages,
+        database.entries.len(),
+        database.hooks.len(),
+        database.classes.len(),
+        database.source_url,
+        database.parser_version
+    );
+    CommandResult {
+        kind: "gmodApiCoverage".into(),
+        title: "Lux GMod API Coverage".into(),
+        markdown,
+        items: vec![
+            CommandItem {
+                label: "Official pages".into(),
+                detail: official_pages.to_string(),
+                description: "Facepunch pagelist baseline".into(),
+                markdown: String::new(),
+            },
+            CommandItem {
+                label: "Document records".into(),
+                detail: document_pages.to_string(),
+                description: "Generated documents[] records".into(),
+                markdown: String::new(),
+            },
+            CommandItem {
+                label: "Structured API pages".into(),
+                detail: structured_pages.to_string(),
+                description: "API pages parsed into entries/hooks/classes".into(),
+                markdown: String::new(),
+            },
+        ],
     }
 }
 
@@ -1483,16 +1719,19 @@ fn import_source_for_specifier_list(prefix: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        CompletionContext, completion_context, encode_semantic_tokens, path_to_url, url_to_path,
+        CommandDocumentPosition, GmodTypeFacts, active_realm_command, api_completion_candidates,
+        gmod_api_coverage_command, hook_name_at_offset, infer_receiver_class,
+        manifest_section_insert_position, method_path_at_offset, module_exports_command,
+        resolve_typed_method_path, signature_help_at,
     };
     use super::{
-        GmodTypeFacts, api_completion_candidates, hook_name_at_offset, infer_receiver_class,
-        manifest_section_insert_position, method_path_at_offset, resolve_typed_method_path,
-        signature_help_at,
+        CompletionContext, completion_context, encode_semantic_tokens, path_to_url, url_to_path,
     };
     use gmod_api_db::ApiIndex;
     use lsp_types::SemanticToken;
-    use luxc::analysis::{AnalysisSemanticToken, SemanticTokenKind};
+    use luxc::analysis::{
+        AnalysisConfig, AnalysisSemanticToken, AnalysisWorkspace, SemanticTokenKind,
+    };
     use luxc::source::{SourceFile, SourceSpan};
 
     #[test]
@@ -1681,5 +1920,72 @@ mod tests {
         let uri = path_to_url(&path).expect("file uri");
         let round_tripped = url_to_path(&uri).expect("path");
         assert_eq!(round_tripped, path);
+    }
+
+    #[test]
+    fn command_document_position_accepts_camel_case_arguments() {
+        let uri = path_to_url(&std::env::current_dir().expect("cwd").join("src/module.lux"))
+            .expect("uri");
+        let value = serde_json::json!({
+            "uri": uri,
+            "line": 2,
+            "character": 4
+        });
+        let parsed = CommandDocumentPosition::from_arguments(&[value])
+            .expect("valid args")
+            .expect("position");
+        assert_eq!(parsed.line, Some(2));
+        assert_eq!(parsed.character, Some(4));
+    }
+
+    #[test]
+    fn command_results_use_analysis_for_exports_and_realm() {
+        let root = std::env::temp_dir().join(format!(
+            "lux_lsp_command_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).expect("root");
+        let source = root.join("module.lux");
+        std::fs::write(
+            &source,
+            "client fn paint() = 1\nserver fn grant() = 2\nexport client { paint }\n",
+        )
+        .expect("source");
+        let workspace =
+            AnalysisWorkspace::load(AnalysisConfig::new(&root), Vec::new()).expect("analysis");
+        let analysis = workspace.analysis();
+        let uri = path_to_url(&source).expect("uri");
+        let position = CommandDocumentPosition {
+            uri,
+            line: Some(0),
+            character: Some(3),
+        };
+
+        let exports = module_exports_command(analysis, Some(&position));
+        assert_eq!(exports.kind, "moduleExports");
+        assert!(exports.items.iter().any(|item| item.label == "paint"));
+
+        let realm = active_realm_command(analysis, Some(&position));
+        assert_eq!(realm.kind, "activeRealm");
+        assert_eq!(realm.items[0].label, "client");
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn gmod_api_coverage_command_reports_full_official_docs() {
+        let api = ApiIndex::bundled();
+        let result = gmod_api_coverage_command(&api);
+        assert_eq!(result.kind, "gmodApiCoverage");
+        assert!(result.markdown.contains("Official pages"));
+        assert!(
+            result
+                .items
+                .iter()
+                .any(|item| item.label == "Document records")
+        );
     }
 }

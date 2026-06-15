@@ -80,6 +80,9 @@ Default rules:
   `documents[]`.
 - The update command fails when an official page cannot be fetched or when an
   API candidate page cannot be parsed into structured data.
+- Bundled release data must keep `document_page_count == official_page_count`,
+  `structured_page_count == api_candidate_count`, `fallback_page_count == 0`,
+  and `failed_page_count == 0`.
 - `--allow-failures` is only for parser development.
 - The generated database and coverage manifest must be committed together.
 - Curated corrections are applied with `--override <json>` files after official

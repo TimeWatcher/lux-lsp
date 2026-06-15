@@ -1,0 +1,291 @@
+{
+  "name": "lux-vscode",
+  "displayName": "Lux",
+  "description": "Lux language support for Garry's Mod addons: LSP diagnostics, completion, hover, formatting, semantic highlighting, and GMod API documentation.",
+  "version": "0.1.0",
+  "publisher": "timewatcher",
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TimeWatcher/lux-lsp"
+  },
+  "engines": {
+    "vscode": "^1.92.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters",
+    "Formatters",
+    "Snippets"
+  ],
+  "keywords": [
+    "lux",
+    "garrysmod",
+    "gmod",
+    "glua",
+    "lua",
+    "lsp"
+  ],
+  "activationEvents": [
+    "onLanguage:lux",
+    "workspaceContains:lux.toml",
+    "workspaceContains:**/*.lux",
+    "onCommand:lux.restartServer",
+    "onCommand:lux.openDocs",
+    "onCommand:lux.openGmodDocs",
+    "onCommand:lux.updateGmodApiDatabase",
+    "onCommand:lux.compileProject",
+    "onCommand:lux.formatDocument",
+    "onCommand:lux.showModuleExports",
+    "onCommand:lux.showActiveRealm",
+    "onCommand:lux.showGmodApiCoverage"
+  ],
+  "main": "./out/extension.js",
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "check": "tsc -p ./ --noEmit",
+    "package": "vsce package"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.15",
+    "@types/vscode": "^1.92.0",
+    "@vscode/vsce": "^2.32.0",
+    "typescript": "^5.5.4"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "lux",
+        "aliases": [
+          "Lux",
+          "lux"
+        ],
+        "extensions": [
+          ".lux"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "lux",
+        "scopeName": "source.lux",
+        "path": "./syntaxes/lux.tmLanguage.json"
+      }
+    ],
+    "semanticTokenTypes": [
+      {
+        "id": "realm",
+        "superType": "keyword",
+        "description": "Lux realm marker or domain"
+      },
+      {
+        "id": "export",
+        "superType": "keyword",
+        "description": "Lux export binding"
+      },
+      {
+        "id": "import",
+        "superType": "namespace",
+        "description": "Lux import binding"
+      },
+      {
+        "id": "external",
+        "superType": "variable",
+        "description": "Known external GMod or package symbol"
+      },
+      {
+        "id": "unknownExternal",
+        "superType": "variable",
+        "description": "Unknown external symbol allowed with diagnostic policy"
+      }
+    ],
+    "semanticTokenScopes": [
+      {
+        "language": "lux",
+        "scopes": {
+          "realm": [
+            "storage.modifier.realm.lux"
+          ],
+          "export": [
+            "keyword.control.export.lux"
+          ],
+          "import": [
+            "keyword.control.import.lux"
+          ],
+          "external": [
+            "support.other.external.lux"
+          ],
+          "unknownExternal": [
+            "invalid.deprecated.unknown-external.lux"
+          ]
+        }
+      }
+    ],
+    "snippets": [
+      {
+        "language": "lux",
+        "path": "./snippets/lux.json"
+      }
+    ],
+    "configurationDefaults": {
+      "[lux]": {
+        "editor.defaultFormatter": "timewatcher.lux-vscode",
+        "editor.formatOnSave": true,
+        "editor.semanticHighlighting.enabled": true
+      }
+    },
+    "configuration": {
+      "title": "Lux",
+      "properties": {
+        "lux.lsp.serverPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to `lux-lsp` or `lux-lsp.exe`. When empty, the extension tries bundled binaries and then `lux-lsp` on PATH."
+        },
+        "lux.lsp.trace.server": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "markdownDescription": "Trace communication with the Lux language server."
+        },
+        "lux.lsp.developmentCargoFallback": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "When no server binary is found, run `cargo run -p lux-lsp` from the configured development workspace. Intended only for Lux LSP development."
+        },
+        "lux.lsp.developmentWorkspace": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to the `lux-lsp` repository used when `lux.lsp.developmentCargoFallback` is enabled."
+        },
+        "lux.compiler.path": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to `luxc` or `luxc.exe` used by extension commands. When empty, the extension tries bundled binaries and then `luxc` on PATH."
+        },
+        "lux.docs.url": {
+          "type": "string",
+          "default": "https://timewatcher.github.io/lux-docs-site/",
+          "markdownDescription": "Lux documentation URL opened by the `Lux: Open Documentation` command."
+        },
+        "lux.gmod.docsUrl": {
+          "type": "string",
+          "default": "https://wiki.facepunch.com/gmod/",
+          "markdownDescription": "Base Facepunch Garry's Mod documentation URL."
+        },
+        "lux.gmod.apiUpdateArgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Additional arguments passed to `luxc gmod api update` from the VS Code command."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "lux.restartServer",
+        "title": "Lux: Restart Language Server",
+        "category": "Lux"
+      },
+      {
+        "command": "lux.openDocs",
+        "title": "Lux: Open Documentation",
+        "category": "Lux"
+      },
+      {
+        "command": "lux.openGmodDocs",
+        "title": "Lux: Open Garry's Mod Documentation",
+        "category": "Lux"
+      },
+      {
+        "command": "lux.updateGmodApiDatabase",
+        "title": "Lux: Update Garry's Mod API Database",
+        "category": "Lux"
+      },
+      {
+        "command": "lux.compileProject",
+        "title": "Lux: Compile Current Project",
+        "category": "Lux"
+      },
+      {
+        "command": "lux.formatDocument",
+        "title": "Lux: Format Document",
+        "category": "Lux"
+      },
+      {
+        "command": "lux.showModuleExports",
+        "title": "Lux: Show Module Exports",
+        "category": "Lux"
+      },
+      {
+        "command": "lux.showActiveRealm",
+        "title": "Lux: Show Active Realm",
+        "category": "Lux"
+      },
+      {
+        "command": "lux.showGmodApiCoverage",
+        "title": "Lux: Show GMod API Coverage",
+        "category": "Lux"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "lux.restartServer"
+        },
+        {
+          "command": "lux.openDocs"
+        },
+        {
+          "command": "lux.openGmodDocs"
+        },
+        {
+          "command": "lux.updateGmodApiDatabase"
+        },
+        {
+          "command": "lux.compileProject"
+        },
+        {
+          "command": "lux.formatDocument"
+        },
+        {
+          "command": "lux.showModuleExports"
+        },
+        {
+          "command": "lux.showActiveRealm"
+        },
+        {
+          "command": "lux.showGmodApiCoverage"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "lux.formatDocument",
+          "when": "editorLangId == lux",
+          "group": "1_modification"
+        },
+        {
+          "command": "lux.showModuleExports",
+          "when": "editorLangId == lux",
+          "group": "2_lux"
+        },
+        {
+          "command": "lux.showActiveRealm",
+          "when": "editorLangId == lux",
+          "group": "2_lux"
+        }
+      ]
+    }
+  }
+}

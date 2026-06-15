@@ -711,7 +711,7 @@ fn bundled_database_text() -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{ApiIndex, ApiRealm, entry_markdown};
+    use super::{ApiDocumentStatus, ApiIndex, ApiRealm, entry_markdown};
 
     #[test]
     fn longest_path_lookup_prefers_member_data() {
@@ -744,24 +744,72 @@ mod tests {
     #[test]
     fn bundled_database_is_generated_from_official_coverage_manifest() {
         let index = ApiIndex::bundled();
+        let database = index.database();
         let coverage = index
             .database()
             .coverage
             .as_ref()
             .expect("bundled database must include coverage metadata");
+        assert_eq!(
+            database.generated_from,
+            "Facepunch Garry's Mod Wiki JSON",
+            "the bundled database must be generated from official Facepunch JSON"
+        );
         assert_eq!(coverage.source_url, crate::OFFICIAL_PAGELIST_URL);
         assert_eq!(coverage.failed_page_count, 0);
+        assert_eq!(
+            coverage.fallback_page_count, 0,
+            "API candidate pages must not be silently downgraded to fallback docs"
+        );
         assert!(coverage.official_page_count >= 6000);
+        assert_eq!(coverage.pages.len(), coverage.official_page_count);
         assert_eq!(coverage.document_page_count, coverage.official_page_count);
         assert_eq!(index.documents().len(), coverage.official_page_count);
         assert!(coverage.api_candidate_count >= 5000);
-        assert!(coverage.structured_page_count >= 5000);
+        assert_eq!(
+            coverage.structured_page_count, coverage.api_candidate_count,
+            "every official API candidate page must be structurally converted"
+        );
+        assert_eq!(
+            coverage.skipped_page_count + coverage.api_candidate_count,
+            coverage.official_page_count,
+            "coverage accounting must explain every official page"
+        );
         for page in &coverage.pages {
             assert!(
                 index.document(&page.address).is_some(),
                 "missing official document page `{}`",
                 page.address
             );
+        }
+        for document in index.documents() {
+            assert!(
+                document.official_url.is_some(),
+                "official document page `{}` is missing its source URL",
+                document.address
+            );
+            assert!(
+                document.source.is_some(),
+                "official document page `{}` is missing source metadata",
+                document.address
+            );
+            if document.api_candidate {
+                assert!(
+                    document.structured,
+                    "official API candidate `{}` was not structurally converted",
+                    document.address
+                );
+                assert_eq!(document.status, ApiDocumentStatus::StructuredApi);
+                assert!(
+                    !document.entry_paths.is_empty()
+                        || !document.hook_names.is_empty()
+                        || !document.class_names.is_empty(),
+                    "structured API page `{}` produced no indexed symbols",
+                    document.address
+                );
+            } else {
+                assert_eq!(document.status, ApiDocumentStatus::Documentation);
+            }
         }
         assert!(index.entry("net.Start").is_some());
         assert!(index.entry("net.Broadcast").is_some());

@@ -1,0 +1,78 @@
+{
+  "Module Export": {
+    "prefix": "export",
+    "body": [
+      "export ${1:shared} { ${2:name} }"
+    ],
+    "description": "Export a module-scope binding with an optional realm."
+  },
+  "Import Specifiers": {
+    "prefix": "import",
+    "body": [
+      "import { ${1:name} } from \"${2:module}\""
+    ],
+    "description": "Import named exports from another Lux module."
+  },
+  "Client Function": {
+    "prefix": "clientfn",
+    "body": [
+      "client fn ${1:name}(${2:args}) {",
+      "  ${0}",
+      "}"
+    ],
+    "description": "Declare a client-only function."
+  },
+  "Server Function": {
+    "prefix": "serverfn",
+    "body": [
+      "server fn ${1:name}(${2:args}) {",
+      "  ${0}",
+      "}"
+    ],
+    "description": "Declare a server-only function."
+  },
+  "Realm Block": {
+    "prefix": "realm",
+    "body": [
+      "${1|client,server,shared|} {",
+      "  ${0}",
+      "}"
+    ],
+    "description": "Create an explicit Lux realm domain."
+  },
+  "Match Expression": {
+    "prefix": "match",
+    "body": [
+      "match ${1:value} {",
+      "  ${2:Pattern} => ${3:result}",
+      "  _ => ${0:fallback}",
+      "}"
+    ],
+    "description": "Lux match expression."
+  },
+  "Enum Repr Number": {
+    "prefix": "enum",
+    "body": [
+      "enum ${1:Name} repr number {",
+      "  ${2:Variant} = ${3:0}",
+      "}"
+    ],
+    "description": "Declare an explicit numeric enum."
+  },
+  "Extern Declaration": {
+    "prefix": "extern",
+    "body": [
+      "extern ${1|shared,client,server|} ${2:Symbol.Path}"
+    ],
+    "description": "Declare a third-party or dynamic external symbol realm."
+  },
+  "Hook Add": {
+    "prefix": "hookadd",
+    "body": [
+      "hook.Add(\"${1:HUDPaint}\", \"${2:Id}\", (${3}) => {",
+      "  ${0}",
+      "})"
+    ],
+    "description": "Add a GMod hook callback."
+  }
+}

@@ -9,7 +9,7 @@ English documentation: [README.md](README.md).
 ## 范围
 
 - `lux-lsp`：独立的 Language Server Protocol 实现，当前已接入 `luxc::analysis`。
-- `vscode-lux`：轻量 VS Code 扩展壳，负责激活、语法、配置、代码片段、命令和 server 启动。
+- `vscode-lux`：VS Code 扩展壳，负责激活、TextMate grammar、semantic token scopes、配置、代码片段、命令、server 启动和 VSIX 打包。
 - `gmod-api-db`：版本化 Garry's Mod 官方文档和 API 数据库，供 hover、completion、signature help、diagnostics 和编译器 realm 检查共用。
 - 从 Lux 编译器抽取稳定分析 API，而不是让 LSP 解析 CLI stderr。
 
@@ -19,16 +19,17 @@ Phase 1、Phase 2 和 Phase 3 核心基础已经落地：
 
 - `luxc::analysis` 是 compiler、CLI、LSP 和测试共享的稳定分析入口。
 - LSP 通过内存 overlay 分析未保存文件，不解析 `luxc` 命令行输出。
-- 支持 LSP 3.17 初始化、全文同步、diagnostics、hover、completion、definition、formatting、semantic tokens 和 code action。
+- 支持 LSP 3.17 初始化、全文同步、diagnostics、hover、completion、definition、formatting、semantic tokens、code action 和 workspace command。
 - completion 已接入 Lux module/export 语义：module path、export list、import specifier 和普通 binding 会按上下文返回。
 - hover 和 definition 已支持 module 内部 binding、export alias、import binding、unknown external。
 - diagnostics 和 quick fix 已由 compiler analysis API 生成，包括 unknown external 的 `extern` 建议。
 - `gmod-api-db` 已经内置由 Facepunch 官方 Wiki JSON 页表和单页 markup 生成的离线数据库。official pagelist 是覆盖率基准，主数据库不能由人工维护表替代。
+- 发布质量要求完整官方覆盖：Facepunch pagelist 中的每个页面都必须进入 `documents[]`，每个 API 候选页都必须转换成结构化 API 数据，并且 bundled coverage manifest 必须保持 0 failed、0 fallback。
 - 当前 bundled database 为全部 6335 个官方页面生成了 document record，并为其中 6121 个 API 候选页面生成语义 API 索引；6121 个页面结构化解析，0 个页面作为 fallback 文档页保留，生成 10022 个 entry、497 个 hook、186 个 class，失败转换页面为 0。
 - 官方 class 和 Derma panel 的 parent metadata 已进入数据库，因此继承方法补全和文档解析沿 Facepunch 官方 markup 查询，而不是依赖人工维护的类型表。
-- compiler realm 检查和 LSP hover、completion、signature help、GMod 官方文档 code action 共用同一个 `gmod-api-db` 查询接口。
-
-本仓库还没有发布 VS Code 扩展。下一阶段是 VS Code 扩展壳、数据库更新命令 UX、curated override 支持和发布打包。
+- compiler realm 检查和 LSP hover、completion、signature help、workspace command、GMod 官方文档 code action 共用同一个 `gmod-api-db` 查询接口。
+- `vscode-lux` 已经具备完整扩展壳：TextMate grammar、semantic token scopes、snippets、settings、server resolution、编辑器命令、quick-fix command handling 和 VSIX packaging。
+- GitHub Actions 会构建 Rust server，打包 VS Code extension，并在 tag release 中附带 VSIX 和预构建 server archive。
 
 ## 本地开发
 
@@ -36,6 +37,23 @@ Phase 1、Phase 2 和 Phase 3 核心基础已经落地：
 cargo test
 cargo run -p lux-lsp
 ```
+
+构建和打包 VS Code 扩展：
+
+```powershell
+cd vscode-lux
+npm install
+npm run compile
+npm run package
+```
+
+release workflow 会构建这些 server binary：
+
+- `windows-x64`
+- `linux-x64`
+- `macos-arm64`
+
+随后 workflow 会把这些 binary 复制到 `vscode-lux/server/<platform>/`，打包 VSIX，并把 standalone server archive 和 VSIX 一起上传到 GitHub Release。
 
 更新内置官方 GMod API 数据库：
 
@@ -47,6 +65,8 @@ luxc gmod api update `
 ```
 
 独立开发入口仍然可用：`cargo run -p gmod-api-update -- ...`。两条路径共用同一个 Rust updater library。updater 以 `https://wiki.facepunch.com/gmod/~pagelist?format=json` 作为覆盖率基准，下载每一个官方单页 JSON，转换 Facepunch markup，为每个官方页面写入 document record，并从结构化 API markup 生成语义 API 索引；`--override <json>` 只能叠加可追溯修正，不能替代官方抓取链路。只要官方页面抓取失败、`documents[]` 没有完整覆盖官方页表，或 API 候选页面无法转换成结构化数据，命令就会失败。开发 parser 时可以显式加 `--allow-failures`。
+
+不要把这条链路替换成手写 API 表。手写数据只能作为测试 fixture，或作为官方数据生成后叠加的、经过审查且可追溯的 override patch。
 
 在 Lux 主仓库中，本仓库作为 `lsp` submodule 存在。`lux-lsp` 依赖相邻的 `../compiler` crate，因此推荐从主仓库克隆并初始化 submodule 后开发。
 
@@ -78,6 +98,17 @@ Lux 还必须在此基础上提供 GLua 工具无法提供的增强：
 - 跨多 part module 的定义跳转
 - export、alias、内部 binding、realm availability 的 hover
 - Lux 语法的格式化和 semantic tokens
+
+## VS Code
+
+扩展启动 `lux-lsp` 的顺序是：
+
+1. `lux.lsp.serverPath`
+2. VSIX 内置的 `server/<platform>/` 预构建二进制
+3. `PATH` 中的 `lux-lsp`
+4. 只有显式开启 development fallback 时，才执行 `cargo run -p lux-lsp`
+
+编辑器命令包括：重启 server、打开 Lux 文档、打开 GMod 官方文档、更新 GMod API 数据库、编译当前项目、格式化当前文档、显示 module exports、显示当前位置 realm、显示生成的 API 覆盖率。
 
 ## 授权
 

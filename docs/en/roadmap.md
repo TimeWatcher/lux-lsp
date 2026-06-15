@@ -78,22 +78,28 @@
 
 ## Phase 6: VS Code Extension
 
-- TextMate grammar.
-- Semantic token scopes.
-- snippets.
-- settings.
-- commands.
-- quick fix, source action, and workspace edit UX.
-- server distribution.
-- VSIX package.
+- Done: ship `vscode-lux` with TextMate grammar and language configuration.
+- Done: map LSP semantic token types to stable VS Code scopes.
+- Done: provide Lux snippets for imports, exports, realm declarations, realm
+  blocks, enums, matches, externs, and hook callbacks.
+- Done: add settings for server path, compiler path, docs URLs, trace, and
+  development fallback.
+- Done: add commands for restart server, open docs, open GMod docs, update API
+  database, compile project, format document, show module exports, show active
+  realm, and show GMod API coverage.
+- Done: route quick-fix commands through VS Code commands and LSP
+  `workspace/executeCommand`; TypeScript does not duplicate the Lux resolver.
+- Done: resolve server binaries from user settings, bundled VSIX assets, PATH,
+  or explicit development cargo fallback.
+- Done: package a VSIX with `@vscode/vsce`.
 
 ## Phase 7: Release
 
-- Build LSP server binaries with GitHub Actions.
-- Attach prebuilt servers to GitHub Releases.
-- Publish VSIX.
-- Add LSP and VS Code installation pages to the docs site.
-- Link this repository from the main Lux README.
+- Done: GitHub Actions build LSP server binaries for Windows, Linux, and macOS.
+- Done: tagged releases attach prebuilt server archives.
+- Done: release workflow packages a VSIX with bundled server binaries.
+- Done: docs site has LSP and VS Code installation pages.
+- Done: main Lux README links to this repository and the public documentation.
 
 ## Out Of Scope For The First Stage
 

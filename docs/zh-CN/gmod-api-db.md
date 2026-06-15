@@ -65,6 +65,7 @@ luxc gmod api update `
 - official pagelist 是 source of truth。
 - official pagelist 中的每个页面都必须被抓取，并在 `documents[]` 中有对应记录。
 - 官方页面抓取失败，或 API 候选页无法结构化解析时，更新命令失败。
+- bundled release 数据必须保持 `document_page_count == official_page_count`、`structured_page_count == api_candidate_count`、`fallback_page_count == 0`、`failed_page_count == 0`。
 - 只有 parser 开发时可以显式使用 `--allow-failures`。
 - generated database 必须和 coverage manifest 一起提交。
 - curated 修正通过 `--override <json>` 在官方数据生成后叠加，必须经过审查并可追溯。
