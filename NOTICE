@@ -1,0 +1,10 @@
+Lux LSP
+
+Copyright (c) 2026 Lux contributors.
+
+Lux LSP is part of the Lux language project. It is designed to provide language
+server support, VS Code integration, and Garry's Mod API intelligence for Lux.
+
+Garry's Mod API documentation data must be sourced from official/public
+documentation with attribution. GLua Enhanced is treated as a user-experience
+reference only; Lux LSP must not copy its GPL implementation or bundled data.

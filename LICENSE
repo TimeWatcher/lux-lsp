@@ -1,0 +1,9 @@
+Lux LSP is licensed under either of the following licenses, at your option:
+
+- Apache License, Version 2.0
+- MIT License
+
+This repository currently contains design documents and will host the Lux
+language server, VS Code extension, and shared Garry's Mod API intelligence
+data. Third-party documentation data generated from external sources must keep
+its own attribution and license metadata in the generated database.
