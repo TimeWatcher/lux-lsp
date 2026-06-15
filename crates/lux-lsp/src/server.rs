@@ -24,8 +24,8 @@ use lsp_types::{
 };
 use luxc::analysis::{
     AnalysisCodeAction, AnalysisConfig, AnalysisDiagnostic, AnalysisEditKind, AnalysisFile,
-    AnalysisRange, AnalysisSemanticToken, CompletionCandidate, ProjectAnalysis, SemanticTokenKind,
-    analyze_source_root, format_text,
+    AnalysisRange, AnalysisSemanticToken, AnalysisWorkspace, CompletionCandidate, ProjectAnalysis,
+    SemanticTokenKind, format_text,
 };
 use luxc::diag::Severity;
 use luxc::module::RealmSet;
@@ -113,7 +113,7 @@ struct Server {
     root: PathBuf,
     documents: HashMap<Uri, String>,
     published_diagnostics: BTreeSet<Uri>,
-    analysis: Option<ProjectAnalysis>,
+    workspace: Option<AnalysisWorkspace>,
 }
 
 impl Server {
@@ -124,7 +124,7 @@ impl Server {
             root,
             documents: HashMap::new(),
             published_diagnostics: BTreeSet::new(),
-            analysis: None,
+            workspace: None,
         }
     }
 
@@ -276,7 +276,7 @@ impl Server {
     }
 
     fn completion(&mut self, params: CompletionParams) -> Result<serde_json::Value, String> {
-        let Some(analysis) = self.analysis.as_ref() else {
+        let Some(analysis) = self.analysis() else {
             return json_result::<Option<CompletionResponse>>(None);
         };
         let Some(path) = url_to_path(&params.text_document_position.text_document.uri) else {
@@ -383,7 +383,7 @@ impl Server {
         &mut self,
         params: SemanticTokensParams,
     ) -> Result<serde_json::Value, String> {
-        let Some(analysis) = self.analysis.as_ref() else {
+        let Some(analysis) = self.analysis() else {
             return json_result::<Option<SemanticTokensResult>>(None);
         };
         let Some(path) = url_to_path(&params.text_document.uri) else {
@@ -400,7 +400,7 @@ impl Server {
     }
 
     fn code_actions(&mut self, params: CodeActionParams) -> Result<serde_json::Value, String> {
-        let Some(analysis) = self.analysis.as_ref() else {
+        let Some(analysis) = self.analysis() else {
             return json_result::<Option<Vec<CodeActionOrCommand>>>(None);
         };
         let Some(path) = url_to_path(&params.text_document.uri) else {
@@ -419,7 +419,7 @@ impl Server {
         uri: &Uri,
         position: Position,
     ) -> Option<(&ProjectAnalysis, PathBuf, usize)> {
-        let analysis = self.analysis.as_ref()?;
+        let analysis = self.analysis()?;
         let path = url_to_path(uri)?;
         let offset = analysis.offset_for_position(
             &path,
@@ -441,17 +441,33 @@ impl Server {
                 })
             })
             .collect::<Vec<_>>();
-        match analyze_source_root(config, overlays) {
-            Ok(analysis) => {
+        let result = if let Some(workspace) = &mut self.workspace {
+            workspace.update_files(config, overlays).map(|_| ())
+        } else {
+            AnalysisWorkspace::load(config, overlays).map(|workspace| {
+                self.workspace = Some(workspace);
+            })
+        };
+        match result {
+            Ok(()) => {
+                let analysis = self
+                    .workspace
+                    .as_ref()
+                    .expect("workspace loaded")
+                    .analysis()
+                    .clone();
                 self.publish_diagnostics(&analysis);
-                self.analysis = Some(analysis);
             }
             Err(err) => {
                 eprintln!("analysis failed: {err}");
                 self.clear_all_diagnostics();
-                self.analysis = None;
+                self.workspace = None;
             }
         }
+    }
+
+    fn analysis(&self) -> Option<&ProjectAnalysis> {
+        self.workspace.as_ref().map(AnalysisWorkspace::analysis)
     }
 
     fn publish_diagnostics(&mut self, analysis: &ProjectAnalysis) {
