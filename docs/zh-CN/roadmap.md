@@ -8,17 +8,18 @@
 
 ## Phase 1：Compiler Analysis API
 
-- 从 Lux 编译器抽出稳定分析 API。
-- 提供 parse、resolve、module graph、part order、realm stack、diagnostics、formatting。
-- CLI 和 LSP 共享同一套语义入口。
-- 建立 fixture 测试，覆盖 multi-part module、export alias、realm domain block、use-before-init。
+- 已完成：从 Lux 编译器抽出稳定分析 API。
+- 已完成：提供 parse、resolve、module graph、part order、realm stack、diagnostics、formatting、hover、completion、definition、semantic tokens 和 code action 数据。
+- 已完成：CLI、LSP 和测试共享同一套语义入口。
+- 已完成：测试覆盖 multi-part module、export alias、unknown external、UTF-16 position、realm domain block、use-before-init。
 
-## Phase 2：LSP Server MVP
+## Phase 2：LSP Server 基础层
 
-- 实现 LSP 3.17 server。
-- 支持 initialize、text sync、diagnostics、hover、completion、definition、formatting、semantic tokens、code action。
-- 先接 Lux 自身符号，不依赖 GMod API DB 即可运行。
-- 使用 module 粒度增量分析。
+- 已完成：实现 LSP 3.17 server。
+- 已完成：支持 initialize、text sync、diagnostics、hover、completion、definition、formatting、semantic tokens、code action。
+- 已完成：先接 Lux 自身符号，不依赖 GMod API DB 即可运行。
+- 已完成：使用 workspace root + in-memory overlay 分析未保存文件。
+- 已完成：import/export completion、跨 part definition、export alias hover、unknown external quick fix 走 compiler analysis API。
 
 ## Phase 3：GMod API Database
 

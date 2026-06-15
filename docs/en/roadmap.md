@@ -9,20 +9,23 @@
 
 ## Phase 1: Compiler Analysis API
 
-- Extract stable analysis APIs from the Lux compiler.
-- Provide parse, resolve, module graph, part order, realm stack, diagnostics,
-  and formatting.
-- Share the same semantic entry points between CLI and LSP.
-- Add fixture tests for multi-part modules, export aliases, realm domain blocks,
-  and use-before-initialization.
+- Done: extract stable analysis APIs from the Lux compiler.
+- Done: provide parse, resolve, module graph, part order, realm stack,
+  diagnostics, formatting, hover, completion, definition, semantic token, and
+  code action data.
+- Done: share the same semantic entry points between CLI, LSP, and tests.
+- Done: cover multi-part modules, export aliases, unknown externals, UTF-16
+  positions, realm domain blocks, and use-before-initialization.
 
-## Phase 2: LSP Server MVP
+## Phase 2: LSP Server Foundation
 
-- Implement an LSP 3.17 server.
-- Support initialize, text sync, diagnostics, hover, completion, definition,
-  formatting, semantic tokens, and code actions.
-- Start with Lux symbols before depending on the GMod API database.
-- Use module-granularity incremental analysis.
+- Done: implement an LSP 3.17 server.
+- Done: support initialize, text sync, diagnostics, hover, completion,
+  definition, formatting, semantic tokens, and code actions.
+- Done: start with Lux symbols before depending on the GMod API database.
+- Done: analyze unsaved buffers through workspace root plus in-memory overlays.
+- Done: import/export completion, cross-part definition, export alias hover, and
+  unknown external quick fixes use the compiler analysis API.
 
 ## Phase 3: GMod API Database
 

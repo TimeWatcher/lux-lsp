@@ -1,8 +1,8 @@
 # Lux LSP
 
-Lux LSP is the language tooling repository for Lux. It will host the reusable
-language server, the VS Code extension, and the shared Garry's Mod API
-intelligence database used by the compiler and editor.
+Lux LSP is the language tooling repository for Lux. It hosts the reusable
+language server, the VS Code extension shell design, and the shared Garry's Mod
+API intelligence standards used by the compiler and editor.
 
 The goal is not a minimal syntax plugin. Lux developers should get the editor
 experience they already expect from mature GLua tooling, especially GLua
@@ -12,13 +12,46 @@ Enhanced, plus Lux-specific module, realm, export, and syntax intelligence.
 
 ## Scope
 
-- `lux-lsp`: a standalone Language Server Protocol implementation.
+- `lux-lsp`: a standalone Language Server Protocol implementation, now backed
+  by `luxc::analysis`.
 - `vscode-lux`: a thin VS Code extension shell for activation, grammar,
   settings, snippets, commands, and server startup.
 - `gmod-api-db`: versioned Garry's Mod API data shared by hover, completion,
   signature help, diagnostics, and compiler realm checking.
 - shared analysis APIs extracted from the Lux compiler, rather than parsing CLI
   stderr.
+
+## Current Implementation
+
+The Phase 1 and Phase 2 foundation is in place:
+
+- `luxc::analysis` is the stable analysis entry point shared by compiler, CLI,
+  LSP, and tests.
+- The LSP analyzes unsaved buffers through in-memory overlays and does not parse
+  `luxc` command-line output.
+- The server supports LSP 3.17 initialize, full text sync, diagnostics, hover,
+  completion, definition, formatting, semantic tokens, and code actions.
+- Completion is connected to Lux module/export semantics: module paths, export
+  lists, import specifiers, and regular bindings are selected by context.
+- Hover and definition support module-private bindings, export aliases, import
+  bindings, and unknown external symbols.
+- Diagnostics and quick fixes come from compiler analysis, including guided
+  `extern` suggestions for unknown external symbols.
+
+The VS Code extension and complete GMod API database are not released yet. The
+next stage connects this server to `gmod-api-db`, signature help,
+documentation-level GMod API hover, and VS Code packaging.
+
+## Local Development
+
+```powershell
+cargo test
+cargo run -p lux-lsp
+```
+
+In the main Lux repository, this repository is checked out as the `lsp`
+submodule. `lux-lsp` depends on the sibling `../compiler` crate, so the
+recommended setup is to clone Lux with submodules initialized.
 
 ## Standards
 
