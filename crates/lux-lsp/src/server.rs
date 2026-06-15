@@ -6,8 +6,8 @@ use crossbeam_channel::RecvTimeoutError;
 use gmod_api_db::{ApiIndex, entry_markdown, hook_markdown};
 use lsp_server::{Connection, ExtractError, Message, Notification, Request, RequestId, Response};
 use lsp_types::notification::{
-    DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, DidSaveTextDocument,
-    Notification as LspNotification, PublishDiagnostics,
+    DidChangeTextDocument, DidChangeWatchedFiles, DidCloseTextDocument, DidOpenTextDocument,
+    DidSaveTextDocument, Notification as LspNotification, PublishDiagnostics,
 };
 use lsp_types::request::{
     CodeActionRequest, Completion, ExecuteCommand, Formatting, GotoDefinition, HoverRequest,
@@ -17,15 +17,16 @@ use lsp_types::{
     CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams, CompletionItem,
     CompletionItemKind, CompletionItemLabelDetails, CompletionItemTag, CompletionOptions,
     CompletionParams, CompletionResponse, Diagnostic, DiagnosticRelatedInformation,
-    DiagnosticSeverity, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
-    DidOpenTextDocumentParams, DidSaveTextDocumentParams, DocumentFormattingParams, Documentation,
-    ExecuteCommandParams, GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents,
-    HoverParams, InitializeParams, InsertTextFormat, Location, MarkupContent, MarkupKind, OneOf,
-    ParameterInformation, ParameterLabel, Position, PublishDiagnosticsParams, Range, SemanticToken,
-    SemanticTokenType, SemanticTokens, SemanticTokensLegend, SemanticTokensOptions,
-    SemanticTokensParams, SemanticTokensResult, ServerCapabilities, SignatureHelp,
-    SignatureHelpOptions, SignatureInformation, TextDocumentContentChangeEvent,
-    TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Uri, WorkDoneProgressOptions,
+    DiagnosticSeverity, DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
+    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
+    DocumentFormattingParams, Documentation, ExecuteCommandParams, GotoDefinitionParams,
+    GotoDefinitionResponse, Hover, HoverContents, HoverParams, InitializeParams, InsertTextFormat,
+    Location, MarkupContent, MarkupKind, OneOf, ParameterInformation, ParameterLabel, Position,
+    PublishDiagnosticsParams, Range, SemanticToken, SemanticTokenType, SemanticTokens,
+    SemanticTokensLegend, SemanticTokensOptions, SemanticTokensParams, SemanticTokensResult,
+    ServerCapabilities, SignatureHelp, SignatureHelpOptions, SignatureInformation,
+    TextDocumentContentChangeEvent, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit,
+    Uri, WorkDoneProgressOptions,
 };
 use luxc::analysis::{
     AnalysisCodeAction, AnalysisConfig, AnalysisDiagnostic, AnalysisEditKind, AnalysisFile,
@@ -366,6 +367,17 @@ impl Server {
                 self.documents.remove(&uri);
                 self.document_versions.remove(&uri);
                 self.reanalyze_and_publish();
+            }
+            DidChangeWatchedFiles::METHOD => {
+                let params: DidChangeWatchedFilesParams =
+                    serde_json::from_value(notification.params)
+                        .map_err(|err| format!("invalid didChangeWatchedFiles params: {err}"))?;
+                if params.changes.iter().any(|event| {
+                    url_to_path(&event.uri).is_some_and(|path| is_lux_analysis_watched_path(&path))
+                }) {
+                    self.workspace = None;
+                    self.reanalyze_and_publish();
+                }
             }
             _ => {}
         }
@@ -1151,6 +1163,12 @@ fn find_manifest_for_path(root: &Path, path: &Path) -> Option<PathBuf> {
         }
     }
     find_manifest(root)
+}
+
+fn is_lux_analysis_watched_path(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| matches!(name, "lux.toml" | "lux.lock"))
 }
 
 fn manifest_extern_code_actions(
@@ -3515,12 +3533,13 @@ mod tests {
         api_root_completion_candidates, apply_document_changes, completion_item, document_uri_key,
         external_api_hover_markdown, general_binding_completions, gmod_api_coverage_command,
         hook_name_at_offset, identifier_prefix, import_completion_item, infer_receiver_class,
-        keyword_completion_items, lexical_binding_completions, manifest_section_insert_position,
-        method_path_at_offset, module_exports_command, path_to_url, resolve_typed_method_path,
-        server_capabilities, signature_help_at,
+        is_lux_analysis_watched_path, keyword_completion_items, lexical_binding_completions,
+        manifest_section_insert_position, method_path_at_offset, module_exports_command,
+        path_to_url, resolve_typed_method_path, server_capabilities, signature_help_at,
     };
     use super::{
-        CompletionContext, active_manifest, completion_context, encode_semantic_tokens, url_to_path,
+        CompletionContext, active_manifest, analysis_config, completion_context,
+        encode_semantic_tokens, url_to_path,
     };
     use gmod_api_db::ApiIndex;
     use lsp_types::{
@@ -3533,9 +3552,38 @@ mod tests {
         analyze_files,
     };
     use luxc::diag::Severity;
+    use luxc::package_manager::{LockRequest, lock_project};
     use luxc::source::{SourceFile, SourceSpan};
     use std::collections::HashMap;
     use std::path::PathBuf;
+
+    fn temp_root(name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "lux_lsp_{name}_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        ))
+    }
+
+    fn write_runtime_package(root: &std::path::Path, package_id: &str, export: &str) {
+        let package_path = package_id.trim_start_matches('@').replace('/', "_");
+        let package_src = root.join(format!("packages/{package_path}/src"));
+        std::fs::create_dir_all(&package_src).expect("package source");
+        std::fs::write(
+            root.join("lux.package.toml"),
+            format!(
+                "name = \"test-packages\"\n\n[[package]]\nid = \"{package_id}\"\nversion = \"0.1.0\"\npath = \"packages/{package_path}\"\n",
+            ),
+        )
+        .expect("package manifest");
+        std::fs::write(
+            package_src.join("module.lux"),
+            format!("export fn {export}() = true\n"),
+        )
+        .expect("package module");
+    }
 
     #[test]
     fn initialize_capabilities_are_not_double_wrapped() {
@@ -3768,6 +3816,75 @@ mod tests {
     }
 
     #[test]
+    fn analysis_config_loads_locked_package_roots_for_completion_and_diagnostics() {
+        let root = std::env::temp_dir().join(format!(
+            "lux_lsp_lock_package_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        ));
+        let project = root.join("project");
+        let source_root = project.join("src");
+        let package_root = root.join("package-set");
+        std::fs::create_dir_all(&source_root).expect("project source");
+        write_runtime_package(&package_root, "@vendor/ui", "mount");
+        std::fs::write(
+            project.join("lux.toml"),
+            "package_id = \"demo\"\nbundle_id = \"demo\"\n\n[gmod]\nsource_root = \"src\"\naddon_root = \"generated\"\n\n[dependencies]\n\"@vendor/ui\" = { path = \"../package-set\" }\n",
+        )
+        .expect("manifest");
+        let source = source_root.join("module.lux");
+        std::fs::write(&source, "import { mount } from \"@vendor/ui\"\nmount()\n").expect("source");
+        lock_project(&LockRequest {
+            project_root: project.clone(),
+        })
+        .expect("lock project");
+
+        let config = analysis_config(&project, &HashMap::new()).expect("analysis config");
+        assert!(
+            config
+                .package_roots
+                .iter()
+                .any(|root| root == &package_root),
+            "{:?}",
+            config.package_roots
+        );
+        let workspace = AnalysisWorkspace::load(config, Vec::new()).expect("analysis");
+        let analysis = workspace.analysis();
+        let diagnostics = analysis.lsp_diagnostics_for_path(&source);
+        assert!(
+            diagnostics.iter().all(|diagnostic| !diagnostic
+                .message
+                .contains("failed to load Lux runtime package metadata")),
+            "{diagnostics:#?}"
+        );
+        let exports =
+            analysis.importable_exports(&source, "@vendor/ui", luxc::module::RealmSet::SHARED);
+        assert!(exports.iter().any(|candidate| candidate.label == "mount"));
+        let all_exports =
+            analysis.importable_exports_for_all_sources(&source, luxc::module::RealmSet::SHARED);
+        assert!(all_exports.iter().any(|candidate| {
+            candidate.label == "mount" && candidate.source.as_deref() == Some("@vendor/ui")
+        }));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn analysis_watched_paths_include_manifest_and_lockfile() {
+        assert!(is_lux_analysis_watched_path(
+            PathBuf::from("lux.toml").as_path()
+        ));
+        assert!(is_lux_analysis_watched_path(
+            PathBuf::from("lux.lock").as_path()
+        ));
+        assert!(!is_lux_analysis_watched_path(
+            PathBuf::from("module.lux").as_path()
+        ));
+    }
+
+    #[test]
     fn infers_gmod_receiver_class_from_common_constructors() {
         let text = "fn current() = LocalPlayer()\nlocal ply = current()\nlocal alias = ply\nlocal button = vgui.Create(\"DButton\")\n";
         assert_eq!(infer_receiver_class(text, "ply"), Some("Player".into()));
@@ -3831,10 +3948,24 @@ mod tests {
 
     #[test]
     fn import_completion_without_from_inserts_source() {
-        let root = PathBuf::from("src");
-        let path = root.join("client/ui.lux");
+        let root = temp_root("import_completion");
+        let project = root.join("project");
+        let source_root = project.join("src");
+        let package_root = root.join("package-set");
+        std::fs::create_dir_all(&source_root).expect("project source");
+        write_runtime_package(&package_root, "@vendor/ui", "Button");
+        std::fs::write(
+            project.join("lux.toml"),
+            "package_id = \"game\"\nbundle_id = \"game\"\n\n[gmod]\nsource_root = \"src\"\naddon_root = \"generated\"\n\n[dependencies]\n\"@vendor/ui\" = { path = \"../package-set\" }\n",
+        )
+        .expect("manifest");
+        lock_project(&LockRequest {
+            project_root: project.clone(),
+        })
+        .expect("lock project");
+        let path = source_root.join("client/ui.lux");
         let analysis = analyze_files(
-            AnalysisConfig::new(&root).with_package_id("game"),
+            analysis_config(&project, &HashMap::new()).expect("analysis config"),
             [AnalysisFile {
                 path: path.clone(),
                 text: "import { Bu".into(),
@@ -3845,16 +3976,18 @@ mod tests {
             .importable_exports_for_all_sources(&path, luxc::module::RealmSet::CLIENT)
             .into_iter()
             .find(|candidate| {
-                candidate.label == "Button" && candidate.source.as_deref() == Some("@lux/ui")
+                candidate.label == "Button" && candidate.source.as_deref() == Some("@vendor/ui")
             })
             .expect("Button import candidate");
         let item = import_completion_item(candidate, true);
         assert_eq!(item.label, "Button");
         assert_eq!(
             item.insert_text.as_deref(),
-            Some("Button } from \"@lux/ui\"")
+            Some("Button } from \"@vendor/ui\"")
         );
         assert!(item.label_details.is_some());
+
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

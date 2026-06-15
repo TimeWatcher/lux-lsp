@@ -95,7 +95,8 @@ async function startLanguageServer(context: vscode.ExtensionContext): Promise<vo
     synchronize: {
       fileEvents: [
         vscode.workspace.createFileSystemWatcher("**/*.lux"),
-        vscode.workspace.createFileSystemWatcher("**/lux.toml")
+        vscode.workspace.createFileSystemWatcher("**/lux.toml"),
+        vscode.workspace.createFileSystemWatcher("**/lux.lock")
       ]
     },
     middleware: markdownResourceMiddleware(context),
