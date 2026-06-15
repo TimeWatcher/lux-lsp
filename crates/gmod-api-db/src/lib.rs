@@ -160,6 +160,55 @@ pub struct HookEntry {
     pub source: Option<ApiSource>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ApiDocumentStatus {
+    Documentation,
+    StructuredApi,
+    ApiFallback,
+}
+
+impl Default for ApiDocumentStatus {
+    fn default() -> Self {
+        Self::Documentation
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ApiDocumentPage {
+    pub address: String,
+    pub title: String,
+    #[serde(default)]
+    pub tags: String,
+    #[serde(default)]
+    pub status: ApiDocumentStatus,
+    #[serde(default)]
+    pub api_candidate: bool,
+    #[serde(default)]
+    pub structured: bool,
+    pub summary: String,
+    #[serde(default)]
+    pub description: Vec<String>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+    #[serde(default)]
+    pub notes: Vec<String>,
+    #[serde(default)]
+    pub examples: Vec<ApiExample>,
+    #[serde(default)]
+    pub related: Vec<String>,
+    #[serde(default)]
+    pub entry_paths: Vec<String>,
+    #[serde(default)]
+    pub hook_names: Vec<String>,
+    #[serde(default)]
+    pub class_names: Vec<String>,
+    #[serde(default)]
+    pub official_url: Option<String>,
+    #[serde(default)]
+    pub source: Option<ApiSource>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClassEntry {
     pub name: String,
@@ -211,6 +260,8 @@ pub struct CoverageManifest {
     pub scraped_at: String,
     pub parser_version: String,
     pub official_page_count: usize,
+    #[serde(default)]
+    pub document_page_count: usize,
     pub api_candidate_count: usize,
     #[serde(default)]
     pub structured_page_count: usize,
@@ -243,6 +294,8 @@ pub struct ApiDatabase {
     pub coverage: Option<CoverageManifest>,
     #[serde(default)]
     pub overrides: Vec<ApiOverrideSource>,
+    #[serde(default)]
+    pub documents: Vec<ApiDocumentPage>,
     #[serde(default)]
     pub entries: Vec<ApiEntry>,
     #[serde(default)]
@@ -278,6 +331,7 @@ impl std::error::Error for ApiDbError {}
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApiIndex {
     database: ApiDatabase,
+    documents: BTreeMap<String, ApiDocumentPage>,
     entries: BTreeMap<String, ApiEntry>,
     hooks: BTreeMap<String, HookEntry>,
     classes: BTreeMap<String, ClassEntry>,
@@ -305,6 +359,12 @@ impl ApiIndex {
     }
 
     pub fn from_database(database: ApiDatabase) -> Result<Self, serde_json::Error> {
+        let documents = database
+            .documents
+            .iter()
+            .cloned()
+            .map(|document| (document.address.clone(), document))
+            .collect();
         let mut entries = BTreeMap::new();
         for entry in &database.entries {
             entries.insert(normalize_path(&entry.path), entry.clone());
@@ -328,6 +388,7 @@ impl ApiIndex {
             .collect();
         Ok(Self {
             database,
+            documents,
             entries,
             hooks,
             classes,
@@ -336,6 +397,14 @@ impl ApiIndex {
 
     pub fn database(&self) -> &ApiDatabase {
         &self.database
+    }
+
+    pub fn document(&self, address: impl AsRef<str>) -> Option<&ApiDocumentPage> {
+        self.documents.get(address.as_ref())
+    }
+
+    pub fn documents(&self) -> Vec<&ApiDocumentPage> {
+        self.documents.values().collect()
     }
 
     pub fn entry(&self, path: impl AsRef<str>) -> Option<&ApiEntry> {
@@ -683,8 +752,17 @@ mod tests {
         assert_eq!(coverage.source_url, crate::OFFICIAL_PAGELIST_URL);
         assert_eq!(coverage.failed_page_count, 0);
         assert!(coverage.official_page_count >= 6000);
+        assert_eq!(coverage.document_page_count, coverage.official_page_count);
+        assert_eq!(index.documents().len(), coverage.official_page_count);
         assert!(coverage.api_candidate_count >= 5000);
         assert!(coverage.structured_page_count >= 5000);
+        for page in &coverage.pages {
+            assert!(
+                index.document(&page.address).is_some(),
+                "missing official document page `{}`",
+                page.address
+            );
+        }
         assert!(index.entry("net.Start").is_some());
         assert!(index.entry("net.Broadcast").is_some());
         assert!(index.hook("PlayerInitialSpawn").is_some());

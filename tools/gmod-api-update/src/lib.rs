@@ -5,9 +5,9 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use gmod_api_db::{
-    ApiDatabase, ApiEntry, ApiExample, ApiKind, ApiOverrideSource, ApiParameter, ApiRealm,
-    ApiReturn, ApiSignature, ApiSource, ClassEntry, CoverageIssue, CoverageManifest, HookEntry,
-    OFFICIAL_PAGELIST_URL, OfficialPageRef,
+    ApiDatabase, ApiDocumentPage, ApiDocumentStatus, ApiEntry, ApiExample, ApiKind,
+    ApiOverrideSource, ApiParameter, ApiRealm, ApiReturn, ApiSignature, ApiSource, ClassEntry,
+    CoverageIssue, CoverageManifest, HookEntry, OFFICIAL_PAGELIST_URL, OfficialPageRef,
 };
 use regex::Regex;
 use serde::Deserialize;
@@ -46,6 +46,7 @@ fn run(args: Args) -> Result<UpdateSummary, String> {
 
     let scraped_at = unix_timestamp();
     let converted = fetch_and_convert_pages(&args, &client, page_list.clone())?;
+    let mut documents = Vec::new();
     let mut entries = Vec::new();
     let mut hooks = Vec::new();
     let mut classes = BTreeMap::<String, ClassEntry>::new();
@@ -79,9 +80,10 @@ fn run(args: Args) -> Result<UpdateSummary, String> {
                 } else {
                     skipped_pages.push(CoverageIssue {
                         address: page.address,
-                        reason: "not an API documentation page".into(),
+                        reason: "official non-API documentation page".into(),
                     });
                 }
+                documents.push(page.document);
                 entries.extend(page.entries);
                 hooks.extend(page.hooks);
                 for class in page.classes {
@@ -110,6 +112,7 @@ fn run(args: Args) -> Result<UpdateSummary, String> {
         scraped_at: scraped_at.clone(),
         parser_version: PARSER_VERSION.into(),
         official_page_count: page_list.len(),
+        document_page_count: documents.len(),
         api_candidate_count,
         structured_page_count,
         fallback_page_count,
@@ -128,6 +131,18 @@ fn run(args: Args) -> Result<UpdateSummary, String> {
             coverage.failed_page_count
         ));
     }
+    if !args.allow_failures && coverage.document_page_count != coverage.official_page_count {
+        return Err(format!(
+            "official API update converted {} document page(s), but the official pagelist contains {}; re-run with --allow-failures only for parser development",
+            coverage.document_page_count, coverage.official_page_count
+        ));
+    }
+    if !args.allow_failures && coverage.fallback_page_count > 0 {
+        return Err(format!(
+            "official API update left {} API candidate page(s) as fallback documentation; re-run with --allow-failures only for parser development",
+            coverage.fallback_page_count
+        ));
+    }
 
     let mut database = ApiDatabase {
         version: format!("official-{scraped_at}"),
@@ -137,6 +152,7 @@ fn run(args: Args) -> Result<UpdateSummary, String> {
         parser_version: PARSER_VERSION.into(),
         coverage: Some(coverage.clone()),
         overrides: Vec::new(),
+        documents,
         entries,
         hooks,
         classes: classes.into_values().collect(),
@@ -156,6 +172,7 @@ fn run(args: Args) -> Result<UpdateSummary, String> {
             .as_ref()
             .map(|coverage| coverage.official_page_count)
             .unwrap_or_default(),
+        document_pages: coverage.document_page_count,
         api_candidate_pages: coverage.api_candidate_count,
         structured_pages: coverage.structured_page_count,
         fallback_pages: coverage.fallback_page_count,
@@ -204,6 +221,7 @@ pub struct UpdateSummary {
     pub hooks: usize,
     pub classes: usize,
     pub official_pages: usize,
+    pub document_pages: usize,
     pub api_candidate_pages: usize,
     pub structured_pages: usize,
     pub fallback_pages: usize,
@@ -299,8 +317,9 @@ fn print_help() {
         "Usage: gmod-api-update [--out PATH] [--coverage-out PATH] [--cache-dir PATH]\n\
          \n\
          Fetches the official Facepunch Garry's Mod Wiki page list, downloads every\n\
-         official page JSON payload, converts API markup into gmod-api-db JSON, and\n\
-         writes a coverage manifest. Defaults are relative to the lux-lsp workspace.\n\
+         official page JSON payload, converts every page into a document record,\n\
+         extracts structured API data, and writes a coverage manifest. Defaults are\n\
+         relative to the lux-lsp workspace.\n\
          \n\
          Options:\n\
            --out PATH             Database output path\n\
@@ -347,6 +366,7 @@ enum PageResult {
 struct ConvertedPage {
     address: String,
     page_ref: OfficialPageRef,
+    document: ApiDocumentPage,
     api_candidate: bool,
     structured: bool,
     entries: Vec<ApiEntry>,
@@ -471,6 +491,7 @@ fn fetch_text(client: &reqwest::blocking::Client, url: &str) -> Result<String, S
 
 fn convert_page(args: &Args, list_item: &PageListItem, page: WikiPage) -> ConvertedPage {
     let source = source_for(args, list_item, &page);
+    let api_candidate = is_api_candidate(&page);
     let mut converted = ConvertedPage {
         address: page.address.clone(),
         page_ref: OfficialPageRef {
@@ -479,7 +500,26 @@ fn convert_page(args: &Args, list_item: &PageListItem, page: WikiPage) -> Conver
             update_count: page.update_count.or(list_item.update_count),
             view_count: list_item.view_count,
         },
-        api_candidate: is_api_candidate(&page),
+        document: ApiDocumentPage {
+            address: page.address.clone(),
+            title: page.title.clone(),
+            tags: page.tags.clone(),
+            status: ApiDocumentStatus::Documentation,
+            api_candidate,
+            structured: false,
+            summary: String::new(),
+            description: Vec::new(),
+            warnings: Vec::new(),
+            notes: Vec::new(),
+            examples: Vec::new(),
+            related: Vec::new(),
+            entry_paths: Vec::new(),
+            hook_names: Vec::new(),
+            class_names: Vec::new(),
+            official_url: Some(source.url.clone()),
+            source: Some(source.clone()),
+        },
+        api_candidate,
         structured: false,
         entries: Vec::new(),
         hooks: Vec::new(),
@@ -523,6 +563,7 @@ fn convert_page(args: &Args, list_item: &PageListItem, page: WikiPage) -> Conver
     {
         converted.entries.push(fallback_page_entry(&page, &source));
     }
+    converted.document = document_page_for(&page, &source, &converted);
     converted
 }
 
@@ -943,6 +984,62 @@ fn fallback_page_entry(page: &WikiPage, source: &ApiSource) -> ApiEntry {
         notes: extract_named_sections(&page.markup, "note"),
         examples: parse_examples(&page.markup),
         related: related_pages(&page.markup),
+        official_url: Some(source.url.clone()),
+        source: Some(source.clone()),
+    }
+}
+
+fn document_page_for(
+    page: &WikiPage,
+    source: &ApiSource,
+    converted: &ConvertedPage,
+) -> ApiDocumentPage {
+    let text = clean_markup(&page.markup);
+    let status = if converted.structured {
+        ApiDocumentStatus::StructuredApi
+    } else if converted.api_candidate {
+        ApiDocumentStatus::ApiFallback
+    } else {
+        ApiDocumentStatus::Documentation
+    };
+    let mut entry_paths = converted
+        .entries
+        .iter()
+        .map(|entry| entry.path.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    let hook_names = converted
+        .hooks
+        .iter()
+        .map(|hook| hook.name.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    let class_names = converted
+        .classes
+        .iter()
+        .map(|class| class.name.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    entry_paths.sort();
+    ApiDocumentPage {
+        address: page.address.clone(),
+        title: page.title.clone(),
+        tags: page.tags.clone(),
+        status,
+        api_candidate: converted.api_candidate,
+        structured: converted.structured,
+        summary: summary_from(&text).if_empty(|| page.title.clone()),
+        description: paragraphs(&text),
+        warnings: extract_named_sections(&page.markup, "warning"),
+        notes: extract_named_sections(&page.markup, "note"),
+        examples: parse_examples(&page.markup),
+        related: related_pages(&page.markup),
+        entry_paths,
+        hook_names,
+        class_names,
         official_url: Some(source.url.clone()),
         source: Some(source.clone()),
     }
@@ -1760,6 +1857,7 @@ mod tests {
             parser_version: String::new(),
             coverage: None,
             overrides: Vec::new(),
+            documents: Vec::new(),
             entries: Vec::new(),
             hooks: Vec::new(),
             classes: Vec::new(),

@@ -16,8 +16,8 @@ Enhanced, plus Lux-specific module, realm, export, and syntax intelligence.
   by `luxc::analysis`.
 - `vscode-lux`: a thin VS Code extension shell for activation, grammar,
   settings, snippets, commands, and server startup.
-- `gmod-api-db`: versioned Garry's Mod API data shared by hover, completion,
-  signature help, diagnostics, and compiler realm checking.
+- `gmod-api-db`: versioned Garry's Mod documentation and API data shared by
+  hover, completion, signature help, diagnostics, and compiler realm checking.
 - shared analysis APIs extracted from the Lux compiler, rather than parsing CLI
   stderr.
 
@@ -38,11 +38,13 @@ The Phase 1, Phase 2, and core Phase 3 foundation is in place:
 - Diagnostics and quick fixes come from compiler analysis, including guided
   `extern` suggestions for unknown external symbols.
 - `gmod-api-db` now has a generated offline database built from the official
-  Facepunch Wiki JSON page list and per-page markup.
-- The generated database currently covers 6,335 official pages and 6,121 API
-  candidate pages. The latest bundled manifest has 6,121 structured conversions,
-  zero fallback documentation pages, 10,022 entries, 497 hooks, 186 classes, and
-  zero failed page conversions.
+  Facepunch Wiki JSON page list and per-page markup. The official pagelist is
+  the coverage baseline; the primary database is not hand-maintained.
+- The generated database currently contains document records for all 6,335
+  official pages and a semantic API index for 6,121 API candidate pages. The
+  latest bundled manifest has 6,121 structured conversions, zero fallback
+  documentation pages, 10,022 entries, 497 hooks, 186 classes, and zero failed
+  page conversions.
 - Official class and Derma panel parent metadata is parsed into the database, so
   inherited method completion and docs follow the official Facepunch markup
   instead of a hand-maintained type table.
@@ -71,10 +73,13 @@ luxc gmod api update `
 The standalone development entry point is still available as
 `cargo run -p gmod-api-update -- ...`. Both paths use the same Rust updater
 library. The updater uses `https://wiki.facepunch.com/gmod/~pagelist?format=json`
-as the coverage baseline, downloads official page JSON payloads, converts
-Facepunch markup, applies optional `--override <json>` files, and fails if any
-API candidate page cannot be converted unless `--allow-failures` is explicitly
-passed for parser development.
+as the coverage baseline, downloads every official page JSON payload, converts
+Facepunch markup, writes one document record for every official page, builds the
+semantic API index from structured API markup, applies optional
+`--override <json>` files, and fails if any official page cannot be fetched or
+represented in `documents[]`, or any API candidate page cannot be converted into
+structured data unless `--allow-failures` is explicitly passed for parser
+development.
 
 In the main Lux repository, this repository is checked out as the `lsp`
 submodule. `lux-lsp` depends on the sibling `../compiler` crate, so the

@@ -10,7 +10,7 @@ English documentation: [README.md](README.md).
 
 - `lux-lsp`：独立的 Language Server Protocol 实现，当前已接入 `luxc::analysis`。
 - `vscode-lux`：轻量 VS Code 扩展壳，负责激活、语法、配置、代码片段、命令和 server 启动。
-- `gmod-api-db`：版本化 Garry's Mod API 数据库，供 hover、completion、signature help、diagnostics 和编译器 realm 检查共用。
+- `gmod-api-db`：版本化 Garry's Mod 官方文档和 API 数据库，供 hover、completion、signature help、diagnostics 和编译器 realm 检查共用。
 - 从 Lux 编译器抽取稳定分析 API，而不是让 LSP 解析 CLI stderr。
 
 ## 当前实现
@@ -23,8 +23,8 @@ Phase 1、Phase 2 和 Phase 3 核心基础已经落地：
 - completion 已接入 Lux module/export 语义：module path、export list、import specifier 和普通 binding 会按上下文返回。
 - hover 和 definition 已支持 module 内部 binding、export alias、import binding、unknown external。
 - diagnostics 和 quick fix 已由 compiler analysis API 生成，包括 unknown external 的 `extern` 建议。
-- `gmod-api-db` 已经内置由 Facepunch 官方 Wiki JSON 页表和单页 markup 生成的离线数据库。
-- 当前 bundled manifest 覆盖 6335 个官方页面、6121 个 API 候选页面，其中 6121 个页面结构化解析，0 个页面作为 fallback 文档页保留，生成 10022 个 entry、497 个 hook、186 个 class，失败转换页面为 0。
+- `gmod-api-db` 已经内置由 Facepunch 官方 Wiki JSON 页表和单页 markup 生成的离线数据库。official pagelist 是覆盖率基准，主数据库不能由人工维护表替代。
+- 当前 bundled database 为全部 6335 个官方页面生成了 document record，并为其中 6121 个 API 候选页面生成语义 API 索引；6121 个页面结构化解析，0 个页面作为 fallback 文档页保留，生成 10022 个 entry、497 个 hook、186 个 class，失败转换页面为 0。
 - 官方 class 和 Derma panel 的 parent metadata 已进入数据库，因此继承方法补全和文档解析沿 Facepunch 官方 markup 查询，而不是依赖人工维护的类型表。
 - compiler realm 检查和 LSP hover、completion、signature help、GMod 官方文档 code action 共用同一个 `gmod-api-db` 查询接口。
 
@@ -46,7 +46,7 @@ luxc gmod api update `
   --cache-dir target\gmod-api-cache
 ```
 
-独立开发入口仍然可用：`cargo run -p gmod-api-update -- ...`。两条路径共用同一个 Rust updater library。updater 以 `https://wiki.facepunch.com/gmod/~pagelist?format=json` 作为覆盖率基准，下载官方单页 JSON，转换 Facepunch markup，并可通过 `--override <json>` 叠加可追溯修正；只要 API 候选页面抓取或转换失败，命令就会失败。开发 parser 时可以显式加 `--allow-failures`。
+独立开发入口仍然可用：`cargo run -p gmod-api-update -- ...`。两条路径共用同一个 Rust updater library。updater 以 `https://wiki.facepunch.com/gmod/~pagelist?format=json` 作为覆盖率基准，下载每一个官方单页 JSON，转换 Facepunch markup，为每个官方页面写入 document record，并从结构化 API markup 生成语义 API 索引；`--override <json>` 只能叠加可追溯修正，不能替代官方抓取链路。只要官方页面抓取失败、`documents[]` 没有完整覆盖官方页表，或 API 候选页面无法转换成结构化数据，命令就会失败。开发 parser 时可以显式加 `--allow-failures`。
 
 在 Lux 主仓库中，本仓库作为 `lsp` submodule 存在。`lux-lsp` 依赖相邻的 `../compiler` crate，因此推荐从主仓库克隆并初始化 submodule 后开发。
 

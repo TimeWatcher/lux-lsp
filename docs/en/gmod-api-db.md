@@ -3,11 +3,13 @@
 ## Goal
 
 `gmod-api-db` is the foundation for a high-quality GMod development experience
-in Lux. It is not a simple completion list. It is a shared semantic database for
-the compiler and LSP.
+in Lux. It is not a simple completion list and it is not a hand-maintained API
+table. It is a generated official-documentation database plus a semantic API
+index shared by the compiler and LSP.
 
 It must support:
 
+- complete official documentation lookup
 - GMod API completion
 - documentation-level hover
 - signature help
@@ -25,7 +27,9 @@ hand-maintained curated API table.
 
 Lux uses `https://wiki.facepunch.com/gmod/~pagelist?format=json` as the
 coverage baseline, then fetches every official page as `?format=json` and parses
-the Facepunch markup in that payload.
+the Facepunch markup in that payload. Every page in the official pagelist must
+produce one `documents[]` record. API pages also produce structured
+`entries[]`, `hooks[]`, and `classes[]` records.
 
 Generation pipeline:
 
@@ -33,13 +37,14 @@ Generation pipeline:
 official pagelist JSON
   -> per-page official JSON
   -> Facepunch markup parser
-  -> gmod_api.json
+  -> documents[] for every official page
+  -> entries[] / hooks[] / classes[] for API markup
   -> coverage_manifest.json
 ```
 
 Handwritten data may exist only as test fixtures or override patches. It must
 not be the main database source. Overrides must be traceable and must not
-replace the official scraping pipeline.
+replace or reduce the official scraping pipeline.
 
 GLua Enhanced is a user-experience reference only. Lux must not copy its GPL
 implementation or bundled data. Lux should generate and curate its own database
@@ -53,6 +58,8 @@ Every generated database must record:
 - parser version
 - override version
 - database version
+- `documents[]` count
+- API entry, hook, and class counts
 
 Current updater command:
 
@@ -69,19 +76,22 @@ also available as `cargo run -p gmod-api-update -- ...`.
 Default rules:
 
 - The official pagelist is the source of truth.
-- The update command fails when an API candidate page cannot be fetched or
-  parsed.
+- Every official page in the pagelist must be fetched and represented in
+  `documents[]`.
+- The update command fails when an official page cannot be fetched or when an
+  API candidate page cannot be parsed into structured data.
 - `--allow-failures` is only for parser development.
 - The generated database and coverage manifest must be committed together.
 - Curated corrections are applied with `--override <json>` files after official
   data generation. They must be reviewed and traceable.
 - The coverage manifest must report official page count, API candidate count,
-  structured conversions, fallback documentation pages, skipped pages, and
-  failed pages.
+  document page count, structured conversions, fallback documentation pages,
+  skipped non-API pages, and failed pages.
 
-The current bundled manifest covers 6,335 official pages and 6,121 API candidate
-pages. It has 6,121 structured conversions, zero fallback documentation pages,
-10,022 entries, 497 hooks, 186 classes, and zero failed conversions.
+The current bundled database has document records for all 6,335 official pages
+and a semantic API index for 6,121 API candidate pages. It has 6,121 structured
+conversions, zero fallback documentation pages, 10,022 entries, 497 hooks, 186
+classes, and zero failed conversions.
 
 Override files are lightweight JSON patches. They do not need to repeat the full
 generated database metadata:
@@ -104,7 +114,40 @@ Entries are merged by `path`, hooks by `name`, and classes by `name`.
 
 ## Data Model
 
-Base symbol model:
+The database has two layers:
+
+- `documents[]`: one record for every official Facepunch page, including
+  tutorials and non-API reference pages. This is the complete official
+  documentation coverage set.
+- `entries[]`, `hooks[]`, `classes[]`: structured API symbols extracted from
+  API markup. These drive completion, realm checks, signature help, and method
+  lookup.
+
+Base document model:
+
+```ts
+ApiDocumentPage {
+  address: string
+  title: string
+  tags: string
+  status: "documentation" | "structured_api" | "api_fallback"
+  api_candidate: boolean
+  structured: boolean
+  summary: string
+  description: string[]
+  warnings: string[]
+  notes: string[]
+  examples: CodeExample[]
+  related: string[]
+  entry_paths: string[]
+  hook_names: string[]
+  class_names: string[]
+  docs_url: string
+  source: OfficialSource
+}
+```
+
+Base API symbol model:
 
 ```ts
 ApiSymbol {
