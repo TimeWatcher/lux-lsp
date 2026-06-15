@@ -442,7 +442,7 @@ impl Server {
             })
             .collect::<Vec<_>>();
         let result = if let Some(workspace) = &mut self.workspace {
-            workspace.update_files(config, overlays).map(|_| ())
+            workspace.update_source_root(config, overlays).map(|_| ())
         } else {
             AnalysisWorkspace::load(config, overlays).map(|workspace| {
                 self.workspace = Some(workspace);
