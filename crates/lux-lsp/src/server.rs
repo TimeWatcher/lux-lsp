@@ -282,7 +282,7 @@ impl Server {
         let Some(path) = url_to_path(&params.text_document_position.text_document.uri) else {
             return json_result::<Option<CompletionResponse>>(None);
         };
-        let (line_prefix, line_suffix) = analysis
+        let (line_prefix, line_suffix, offset) = analysis
             .file_by_path(&path)
             .map(|file| {
                 let offset = file.offset_at_line_col_utf16(
@@ -291,15 +291,19 @@ impl Server {
                 );
                 let line_prefix = file.text[..offset].rsplit('\n').next().unwrap_or_default();
                 let line_suffix = file.text[offset..].split('\n').next().unwrap_or_default();
-                (line_prefix, line_suffix)
+                (line_prefix, line_suffix, offset)
             })
             .unwrap_or_default();
 
         let candidates = match completion_context(line_prefix, line_suffix) {
             CompletionContext::ImportSource => analysis.module_path_completions(),
-            CompletionContext::ImportSpecifierList { source } => {
-                analysis.importable_exports(&path, &source, RealmSet::SHARED)
-            }
+            CompletionContext::ImportSpecifierList { source } => analysis.importable_exports(
+                &path,
+                &source,
+                analysis
+                    .active_realms_at_path_offset(&path, offset)
+                    .unwrap_or(RealmSet::SHARED),
+            ),
             CompletionContext::ExportList => analysis.exportable_bindings(&path),
             CompletionContext::General => general_binding_completions(analysis, &path),
         };
