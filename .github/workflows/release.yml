@@ -10,128 +10,34 @@ permissions:
   contents: write
 
 jobs:
-  build-server:
-    name: Build lux-lsp (${{ matrix.platform }})
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: windows-x64
-            os: windows-latest
-            target: x86_64-pc-windows-msvc
-            binary: lux-lsp.exe
-            archive: lux-lsp-windows-x64.zip
-          - platform: linux-x64
-            os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            binary: lux-lsp
-            archive: lux-lsp-linux-x64.tar.gz
-          - platform: macos-arm64
-            os: macos-latest
-            target: aarch64-apple-darwin
-            binary: lux-lsp
-            archive: lux-lsp-macos-arm64.tar.gz
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          path: lsp
-      - name: Read Lux repository ref
-        id: lux-ref
-        shell: bash
-        run: echo "ref=$(cat lsp/.github/lux-ref)" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@v4
-        with:
-          repository: TimeWatcher/lux
-          ref: ${{ steps.lux-ref.outputs.ref }}
-          path: lux
-          submodules: recursive
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@v2
-      - name: Prepare sibling path dependencies (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $compilerTarget = (Resolve-Path -LiteralPath "lux/compiler").Path
-          $packagesTarget = (Resolve-Path -LiteralPath "lux/packages").Path
-          New-Item -ItemType Junction -Path "compiler" -Target $compilerTarget
-          New-Item -ItemType Junction -Path "packages" -Target $packagesTarget
-      - name: Prepare sibling path dependencies (Unix)
-        if: runner.os != 'Windows'
-        shell: bash
-        run: |
-          ln -s lux/compiler compiler
-          ln -s lux/packages packages
-      - name: Build server
-        working-directory: lsp
-        run: cargo build --locked --release -p lux-lsp --target ${{ matrix.target }}
-      - name: Stage server
-        shell: bash
-        run: |
-          mkdir -p dist/server/${{ matrix.platform }}
-          cp lsp/target/${{ matrix.target }}/release/${{ matrix.binary }} dist/server/${{ matrix.platform }}/${{ matrix.binary }}
-      - name: Archive server (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: Compress-Archive -Path dist/server/${{ matrix.platform }}/* -DestinationPath dist/${{ matrix.archive }}
-      - name: Archive server (Unix)
-        if: runner.os != 'Windows'
-        shell: bash
-        run: tar -czf dist/${{ matrix.archive }} -C dist/server/${{ matrix.platform }} .
-      - uses: actions/upload-artifact@v4
-        with:
-          name: server-${{ matrix.platform }}
-          path: |
-            dist/server/${{ matrix.platform }}/**
-            dist/${{ matrix.archive }}
-
   package-vsix:
     name: Package VSIX
     runs-on: ubuntu-latest
-    needs: build-server
     steps:
       - uses: actions/checkout@v4
-        with:
-          path: lsp
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: lsp/vscode-lux/package-lock.json
-      - uses: actions/download-artifact@v4
-        with:
-          path: downloaded
+          cache-dependency-path: vscode-lux/package-lock.json
       - name: Install extension dependencies
-        working-directory: lsp/vscode-lux
+        working-directory: vscode-lux
         run: npm ci
-      - name: Copy bundled servers
-        shell: bash
-        run: |
-          mkdir -p lsp/vscode-lux/server
-          find downloaded -path '*/server/*' -type f | while read -r file; do
-            rel="${file#*/server/}"
-            mkdir -p "lsp/vscode-lux/server/$(dirname "$rel")"
-            cp "$file" "lsp/vscode-lux/server/$rel"
-          done
       - name: Compile extension
-        working-directory: lsp/vscode-lux
+        working-directory: vscode-lux
         run: npm run compile
       - name: Package extension
-        working-directory: lsp/vscode-lux
+        working-directory: vscode-lux
         run: npm run package
       - uses: actions/upload-artifact@v4
         with:
           name: lux-vscode-vsix
-          path: lsp/vscode-lux/*.vsix
+          path: vscode-lux/*.vsix
 
   publish:
     name: Publish GitHub Release
     runs-on: ubuntu-latest
-    needs:
-      - build-server
-      - package-vsix
+    needs: package-vsix
     if: startsWith(github.ref, 'refs/tags/')
     steps:
       - uses: actions/download-artifact@v4
@@ -141,7 +47,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p release-assets
-          find dist -type f \( -name '*.zip' -o -name '*.tar.gz' -o -name '*.vsix' \) -exec cp {} release-assets/ \;
+          find dist -type f -name '*.vsix' -exec cp {} release-assets/ \;
           ls -la release-assets
       - uses: softprops/action-gh-release@v2
         with:
