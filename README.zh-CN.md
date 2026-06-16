@@ -110,8 +110,11 @@ luxc lsp
 
 1. `lux.compiler.path`
 2. workspace `.lux/bin/luxc`
-3. `LUXC` 环境变量
-4. `PATH` 中的 `luxc`
+3. 用户级 `~/.lux/bin/luxc`
+4. `LUXC` 环境变量
+5. `PATH` 中的 `luxc`
+
+推荐的用户安装方式是 `~/.lux/bin/luxc` 这个稳定 toolchain shim。它默认转发到全局默认 compiler；只有项目显式写了 `.lux/toolchain.toml` 时才使用项目 pin。因此普通项目和单文件不需要维护 toolchain 文件，编辑器和构建仍然能使用同一套 compiler。
 
 编辑器命令包括：重启 server、打开 Lux 文档、打开 GMod 官方文档、更新 GMod API 数据库、编译当前项目、格式化当前文档、显示 module exports、显示当前位置 realm、显示生成的 API 覆盖率。
 

@@ -157,7 +157,7 @@
         "lux.compiler.path": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Path to the `luxc` executable used for both `luxc lsp` and extension commands. When empty, the extension tries workspace `.lux/bin/luxc`, the `LUXC` environment variable, and then `luxc` on PATH."
+          "markdownDescription": "Path to the `luxc` executable used for both `luxc lsp` and extension commands. When empty, the extension tries workspace `.lux/bin/luxc`, user `~/.lux/bin/luxc`, the `LUXC` environment variable, and then `luxc` on PATH."
         },
         "lux.docs.url": {
           "type": "string",

@@ -208,7 +208,7 @@ function markdownUri(uri: vscode.Uri): string {
 function resolveServerOptions(): ServerOptions {
   const luxc = resolveLuxcPath();
   if (!luxc) {
-    throw new Error("No luxc binary found. Set `lux.compiler.path`, add workspace `.lux/bin/luxc`, set `LUXC`, or install luxc on PATH.");
+    throw new Error("No luxc binary found. Set `lux.compiler.path`, add workspace `.lux/bin/luxc`, install luxc into `~/.lux/bin`, set `LUXC`, or add luxc to PATH.");
   }
   return commandServerOptions(luxc, ["lsp"]);
 }
@@ -302,7 +302,7 @@ async function compileCurrentProject(): Promise<void> {
 async function runLuxcCommand(name: string, args: string[]): Promise<void> {
   const luxc = resolveLuxcPath();
   if (!luxc) {
-    vscode.window.showErrorMessage("No luxc binary found. Set `lux.compiler.path` or install luxc on PATH.");
+    vscode.window.showErrorMessage("No luxc binary found. Set `lux.compiler.path`, install luxc into `~/.lux/bin`, or add luxc to PATH.");
     return;
   }
   const terminal = vscode.window.createTerminal({
@@ -323,6 +323,10 @@ function resolveLuxcPath(): string | undefined {
   if (workspaceToolchain) {
     return workspaceToolchain;
   }
+  const userToolchain = findUserToolchain("luxc");
+  if (userToolchain) {
+    return userToolchain;
+  }
   const envLuxc = (process.env.LUXC ?? "").trim();
   if (envLuxc.length > 0) {
     return envLuxc;
@@ -340,6 +344,20 @@ function findWorkspaceToolchain(baseName: string): string | undefined {
     }
   }
   return undefined;
+}
+
+function findUserToolchain(baseName: string): string | undefined {
+  const exe = process.platform === "win32" ? `${baseName}.exe` : baseName;
+  const home = process.env.LUX_HOME
+    ?? process.env.HOME
+    ?? process.env.USERPROFILE;
+  if (!home) {
+    return undefined;
+  }
+  const candidate = process.env.LUX_HOME
+    ? path.join(home, "bin", exe)
+    : path.join(home, ".lux", "bin", exe);
+  return fs.existsSync(candidate) ? candidate : undefined;
 }
 
 function isCommandAvailable(command: string): boolean {

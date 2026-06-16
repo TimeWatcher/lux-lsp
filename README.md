@@ -164,8 +164,15 @@ It resolves `luxc` in this order:
 
 1. `lux.compiler.path`
 2. workspace `.lux/bin/luxc`
-3. `LUXC` environment variable
-4. `luxc` on `PATH`
+3. user `~/.lux/bin/luxc`
+4. `LUXC` environment variable
+5. `luxc` on `PATH`
+
+The recommended user install is the Lux toolchain shim at `~/.lux/bin/luxc`.
+That stable entrypoint dispatches to the global default compiler unless a
+project explicitly pins a version in `.lux/toolchain.toml`, so the editor and
+project builds stay version-aligned without requiring most projects to maintain
+a toolchain file.
 
 Editor commands include restart server, open Lux docs, open official GMod docs,
 update the GMod API database, compile the current project, format the current
