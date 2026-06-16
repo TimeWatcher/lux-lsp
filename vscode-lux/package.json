@@ -1,5 +1,5 @@
 {
-  "name": "lux-vscode",
+  "name": "lux-gmod",
   "displayName": "Lux",
   "description": "Lux language support for Garry's Mod addons: LSP diagnostics, completion, hover, formatting, semantic highlighting, and GMod API documentation.",
   "version": "0.1.0",
@@ -135,7 +135,7 @@
     ],
     "configurationDefaults": {
       "[lux]": {
-        "editor.defaultFormatter": "Althurdinok.lux-vscode",
+        "editor.defaultFormatter": "Althurdinok.lux-gmod",
         "editor.formatOnSave": true,
         "editor.semanticHighlighting.enabled": true,
         "editor.wordBasedSuggestions": "off"
