@@ -13,13 +13,13 @@
 - Done: provide parse, resolve, module graph, part order, realm stack,
   diagnostics, formatting, hover, completion, definition, semantic token, and
   code action data.
-- Done: share the same semantic entry points between CLI, LSP, and tests.
+- Done: share the same semantic entry points between CLI, `luxc lsp`, and tests.
 - Done: cover multi-part modules, export aliases, unknown externals, UTF-16
   positions, realm domain blocks, and use-before-initialization.
 
 ## Phase 2: LSP Server Foundation
 
-- Done: implement an LSP 3.17 server.
+- Done: implement an LSP 3.17 server inside `luxc`.
 - Done: support initialize, text sync, diagnostics, hover, completion,
   definition, formatting, semantic tokens, and code actions.
 - Done: start with Lux symbols before depending on the GMod API database.
@@ -82,22 +82,21 @@
 - Done: map LSP semantic token types to stable VS Code scopes.
 - Done: provide Lux snippets for imports, exports, realm declarations, realm
   blocks, enums, matches, externs, and hook callbacks.
-- Done: add settings for server path, compiler path, docs URLs, trace, and
-  development fallback.
+- Done: add settings for compiler path, docs URLs, and LSP trace.
 - Done: add commands for restart server, open docs, open GMod docs, update API
   database, compile project, format document, show module exports, show active
   realm, and show GMod API coverage.
 - Done: route quick-fix commands through VS Code commands and LSP
   `workspace/executeCommand`; TypeScript does not duplicate the Lux resolver.
-- Done: resolve server binaries from user settings, bundled VSIX assets, PATH,
-  or explicit development cargo fallback.
+- Done: resolve `luxc` from user settings, workspace `.lux/bin`, `LUXC`, or
+  PATH, then start `luxc lsp`.
 - Done: package a VSIX with `@vscode/vsce`.
 
 ## Phase 7: Release
 
-- Done: GitHub Actions build LSP server binaries for Windows, Linux, and macOS.
-- Done: tagged releases attach prebuilt server archives.
-- Done: release workflow packages a VSIX with bundled server binaries.
+- Done: language server semantics ship with the compiler as `luxc lsp`.
+- Done: VSIX release artifacts stay a UI and forwarding shell, without bundled
+  server binaries.
 - Done: docs site has LSP and VS Code installation pages.
 - Done: main Lux README links to this repository and the public documentation.
 

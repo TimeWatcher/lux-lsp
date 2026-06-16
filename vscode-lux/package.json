@@ -143,11 +143,6 @@
     "configuration": {
       "title": "Lux",
       "properties": {
-        "lux.lsp.serverPath": {
-          "type": "string",
-          "default": "",
-          "markdownDescription": "Path to `lux-lsp` or `lux-lsp.exe`. When empty, the extension tries bundled binaries and then `lux-lsp` on PATH."
-        },
         "lux.lsp.trace.server": {
           "type": "string",
           "enum": [
@@ -158,20 +153,10 @@
           "default": "off",
           "markdownDescription": "Trace communication with the Lux language server."
         },
-        "lux.lsp.developmentCargoFallback": {
-          "type": "boolean",
-          "default": false,
-          "markdownDescription": "When no server binary is found, run `cargo run -p lux-lsp` from the configured development workspace. Intended only for Lux LSP development."
-        },
-        "lux.lsp.developmentWorkspace": {
-          "type": "string",
-          "default": "",
-          "markdownDescription": "Path to the `lux-lsp` repository used when `lux.lsp.developmentCargoFallback` is enabled."
-        },
         "lux.compiler.path": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Path to `luxc` or `luxc.exe` used by extension commands. When empty, the extension tries bundled binaries and then `luxc` on PATH."
+          "markdownDescription": "Path to the `luxc` executable used for both `luxc lsp` and extension commands. When empty, the extension tries workspace `.lux/bin/luxc`, the `LUXC` environment variable, and then `luxc` on PATH."
         },
         "lux.docs.url": {
           "type": "string",

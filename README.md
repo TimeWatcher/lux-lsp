@@ -1,8 +1,8 @@
 # Lux LSP
 
-Lux LSP is the language tooling repository for Lux. It hosts the reusable
-language server, the VS Code extension shell design, and the shared Garry's Mod
-API intelligence standards used by the compiler and editor.
+Lux LSP is the editor tooling repository for Lux. It hosts the VS Code
+extension shell and the shared Garry's Mod API intelligence data used by the
+compiler and editor.
 
 The goal is not a minimal syntax plugin. Lux developers should get the editor
 experience they already expect from mature GLua tooling, especially GLua
@@ -12,24 +12,23 @@ Enhanced, plus Lux-specific module, realm, export, and syntax intelligence.
 
 ## Scope
 
-- `lux-lsp`: a standalone Language Server Protocol implementation, now backed
-  by `luxc::analysis`.
 - `vscode-lux`: the VS Code extension shell for activation, grammar, semantic
-  token scopes, settings, snippets, commands, server startup, and VSIX
-  packaging.
+  token scopes, settings, snippets, commands, `luxc lsp` startup, and VSIX
+  packaging. It does not ship or implement a language server binary.
 - `gmod-api-db`: versioned Garry's Mod documentation and API data shared by
   hover, completion, signature help, diagnostics, and compiler realm checking.
-- shared analysis APIs extracted from the Lux compiler, rather than parsing CLI
-  stderr.
+- language semantics live in `luxc`; editors get them by launching the
+  workspace compiler with `luxc lsp`.
 
 ## Current Implementation
 
 The Phase 1, Phase 2, and core Phase 3 foundation is in place:
 
-- `luxc::analysis` is the stable analysis entry point shared by compiler, CLI,
-  LSP, and tests.
-- The LSP analyzes unsaved buffers through in-memory overlays and does not parse
-  `luxc` command-line output.
+- `luxc lsp` is the language server entry point. Its implementation lives in
+  the compiler crate, so editor diagnostics and completion use the same parser,
+  package resolver, realm checker, and analysis version as builds.
+- The server analyzes unsaved buffers through in-memory overlays and does not
+  parse `luxc` command-line output.
 - The server supports LSP 3.17 initialize, full text sync, diagnostics, hover,
   completion, definition, formatting, semantic tokens, code actions, and
   workspace commands.
@@ -57,20 +56,21 @@ The Phase 1, Phase 2, and core Phase 3 foundation is in place:
 - Compiler realm checks and LSP hover, completion, signature help, workspace
   commands, and GMod docs code actions use the same `gmod-api-db` query
   interface.
-- `vscode-lux` now ships a complete extension shell: TextMate grammar,
-  semantic token scopes, snippets, settings, server resolution, editor commands,
+- `vscode-lux` ships a complete extension shell: TextMate grammar, semantic
+  token scopes, snippets, settings, `luxc` resolution, editor commands,
   quick-fix command handling, and VSIX packaging.
-- GitHub Actions build the Rust server, package the extension, and attach VSIX
-  plus prebuilt server archives to tagged GitHub Releases.
+- Release VSIX artifacts contain the editor integration only. They do not bundle
+  a `lux-lsp` server binary; users provide the compiler toolchain they want the
+  editor to use.
 
 ## Local Development
 
 ```powershell
 cargo test
-cargo run -p lux-lsp
+cargo run --manifest-path ..\compiler\Cargo.toml -- lsp
 ```
 
-Set `LUX_LSP_DEBUG=1` before launching the server when you need raw document
+Set `LUXC_LSP_DEBUG=1` before launching the server when you need raw document
 change and diagnostics lifecycle logs.
 
 Build and package the VS Code extension:
@@ -82,15 +82,9 @@ npm run compile
 npm run package
 ```
 
-The release workflow builds server binaries for:
-
-- `windows-x64`
-- `linux-x64`
-- `macos-arm64`
-
-It then copies those binaries into `vscode-lux/server/<platform>/`, packages the
-VSIX, and uploads both standalone server archives and the VSIX to the GitHub
-Release.
+The VS Code package is intentionally a launcher and UI shell. It does not build
+or bundle a language server. During local testing, set `lux.compiler.path` to
+the `luxc` executable you want the editor to launch.
 
 Update the bundled official GMod API database:
 
@@ -117,8 +111,8 @@ data is allowed only as test fixtures or reviewed override patches applied
 after official data generation.
 
 In the main Lux repository, this repository is checked out as the `lsp`
-submodule. `lux-lsp` depends on the sibling `../compiler` crate, so the
-recommended setup is to clone Lux with submodules initialized.
+submodule. The compiler depends on `gmod-api-db`, and the VS Code extension
+starts the compiler through `luxc lsp`.
 
 ## Standards
 
@@ -153,12 +147,18 @@ Lux then adds language-aware features that GLua tooling cannot provide:
 
 ## VS Code
 
-The extension starts `lux-lsp` in this order:
+The extension starts the language server by running:
 
-1. `lux.lsp.serverPath`
-2. bundled release binary under `server/<platform>/`
-3. `lux-lsp` on `PATH`
-4. `cargo run -p lux-lsp`, only when the development fallback setting is enabled
+```text
+luxc lsp
+```
+
+It resolves `luxc` in this order:
+
+1. `lux.compiler.path`
+2. workspace `.lux/bin/luxc`
+3. `LUXC` environment variable
+4. `luxc` on `PATH`
 
 Editor commands include restart server, open Lux docs, open official GMod docs,
 update the GMod API database, compile the current project, format the current

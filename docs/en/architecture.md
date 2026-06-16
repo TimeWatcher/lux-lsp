@@ -2,44 +2,42 @@
 
 ## Goal
 
-Lux LSP is not a small editor plugin separate from the compiler. It should expose
-the Lux compiler's semantic model to editors and provide the Garry's Mod API
-experience that GLua developers already expect from mature tooling such as GLua
-Enhanced.
+Lux editor support is not a small plugin separate from the compiler. It exposes
+the workspace compiler's semantic model to editors and provides the Garry's Mod
+API experience that GLua developers already expect from mature tooling such as
+GLua Enhanced.
 
 The architecture has three layers:
 
 ```text
-Lux compiler analysis API
-  -> lux-lsp
+luxc analysis + `luxc lsp`
   -> vscode-lux
 
 gmod-api-db
   -> compiler realm checker
-  -> lux-lsp hover/completion/signature/diagnostics
+  -> luxc lsp hover/completion/signature/diagnostics
   -> docs links and API browser
 ```
 
 ## Repository Layout
 
-This repository will host:
+This repository hosts:
 
-- `crates/lux-lsp`: standalone LSP 3.17 server.
-- `extensions/vscode-lux`: thin VS Code shell for activation, TextMate grammar,
-  settings, snippets, commands, and server startup.
+- `vscode-lux`: thin VS Code shell for activation, TextMate grammar, settings,
+  snippets, commands, and `luxc lsp` startup.
 - `crates/gmod-api-db`: Garry's Mod API data model, loader, query interface, and
   version metadata.
 - `tools/gmod-api-update`: official documentation updater.
 - `docs`: language service standards and user documentation.
 
-Implementation must keep the LSP reusable outside VS Code. Editor-specific UX
-belongs in `extensions/vscode-lux`; compiler and GMod API semantics belong in
-the Rust crates.
+Implementation must keep the language server reusable outside VS Code by making
+it a compiler subcommand. Editor-specific UX belongs in `vscode-lux`; compiler
+and GMod API semantics belong in Rust crates used by `luxc`.
 
 ## Compiler Analysis API
 
-The LSP must not call `luxc` and parse stderr. The compiler needs a stable
-analysis API for:
+The LSP implementation must not call another `luxc` and parse stderr. The
+compiler owns the LSP server and calls its own stable analysis API for:
 
 ```text
 parse
@@ -54,12 +52,12 @@ format source
 emit semantic tokens
 ```
 
-The CLI, LSP, and tests should share this API. The CLI is one frontend, not the
-semantic source of truth.
+The CLI, `luxc lsp`, and tests share this API. The compiler is the semantic
+source of truth.
 
 ## Project Model
 
-The LSP must understand Lux project semantics:
+`luxc lsp` must understand Lux project semantics:
 
 - Packages are minimal and modules are discovered automatically.
 - A module is a directory, not a single file.
@@ -78,7 +76,7 @@ The LSP must understand Lux project semantics:
 
 ## Realm Model
 
-The compiler and LSP must share the same realm model:
+Compiler builds and `luxc lsp` must share the same realm model:
 
 ```text
 Lux symbol       -> strict
@@ -125,7 +123,7 @@ New rules:
 
 ## Incremental Analysis
 
-The LSP should support incremental file updates, while semantic results are
+`luxc lsp` should support incremental file updates, while semantic results are
 computed at module granularity:
 
 - When one part changes, rebuild the owning module's parse tree, binding graph,
@@ -139,9 +137,11 @@ computed at module granularity:
 The VS Code extension is an editor integration shell:
 
 - activate the language service
+- resolve `luxc` from user configuration, workspace `.lux/bin`, `LUXC`, or PATH
 - provide TextMate grammar fallback
 - register semantic tokens, formatting, diagnostics, completion, hover,
   signature help, definition, and references
 - provide commands for updating the GMod API database and opening docs
 
-Semantic logic should not be duplicated in the TypeScript extension.
+Semantic logic should not be duplicated in the TypeScript extension, and the
+extension should not ship an independent server binary.

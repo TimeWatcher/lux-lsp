@@ -1,6 +1,6 @@
 # Lux LSP
 
-Lux LSP 是 Lux 的语言工具仓库。它承载可复用的语言服务器、VS Code 扩展壳设计，以及供编译器和编辑器共同使用的 Garry's Mod API 智能数据标准。
+Lux LSP 是 Lux 的编辑器工具仓库。它承载 VS Code 扩展壳，以及供编译器和编辑器共同使用的 Garry's Mod API 智能数据。
 
 这个仓库的目标不是做一个最低限度的语法插件。Lux 开发者应该获得接近 GLua Enhanced 的成熟 GLua 开发体验，并在此基础上获得 Lux 独有的 module、realm、export 和语法智能。
 
@@ -8,18 +8,17 @@ English documentation: [README.md](README.md).
 
 ## 范围
 
-- `lux-lsp`：独立的 Language Server Protocol 实现，当前已接入 `luxc::analysis`。
-- `vscode-lux`：VS Code 扩展壳，负责激活、TextMate grammar、semantic token scopes、配置、代码片段、命令、server 启动和 VSIX 打包。
+- `vscode-lux`：VS Code 扩展壳，负责激活、TextMate grammar、semantic token scopes、配置、代码片段、命令、`luxc lsp` 启动和 VSIX 打包。它不再提供自己的 language server binary。
 - `gmod-api-db`：版本化 Garry's Mod 官方文档和 API 数据库，供 hover、completion、signature help、diagnostics 和编译器 realm 检查共用。
-- 从 Lux 编译器抽取稳定分析 API，而不是让 LSP 解析 CLI stderr。
+- 语言语义由 `luxc` 提供；编辑器通过启动当前项目使用的 compiler：`luxc lsp` 获得语义服务。
 
 ## 当前实现
 
 Phase 1、Phase 2 和 Phase 3 核心基础已经落地：
 
-- `luxc::analysis` 是 compiler、CLI、LSP 和测试共享的稳定分析入口。
-- LSP 通过内存 overlay 分析未保存文件，不解析 `luxc` 命令行输出。
-- 支持 LSP 3.17 初始化、全文同步、diagnostics、hover、completion、definition、formatting、semantic tokens、code action 和 workspace command。
+- `luxc lsp` 是 language server 入口。实现位于 compiler crate 内，因此编辑器 diagnostics 和 completion 使用的 parser、package resolver、realm checker 和 analysis 版本与 build 一致。
+- server 通过内存 overlay 分析未保存文件，不解析 `luxc` 命令行输出。
+- server 支持 LSP 3.17 初始化、全文同步、diagnostics、hover、completion、definition、formatting、semantic tokens、code action 和 workspace command。
 - completion 已接入 Lux module/export 语义：module path、export list、import specifier 和普通 binding 会按上下文返回。
 - hover 和 definition 已支持 module 内部 binding、export alias、import binding、unknown external。
 - diagnostics 和 quick fix 已由 compiler analysis API 生成，包括 unknown external 的 `extern` 建议。
@@ -28,18 +27,18 @@ Phase 1、Phase 2 和 Phase 3 核心基础已经落地：
 - 当前 bundled database 为全部 6335 个官方页面生成了 document record，并为其中 6121 个 API 候选页面生成语义 API 索引；6121 个页面结构化解析，0 个页面作为 fallback 文档页保留，生成 10022 个 entry、497 个 hook、186 个 class，失败转换页面为 0。
 - 官方 class 和 Derma panel 的 parent metadata 已进入数据库，因此继承方法补全和文档解析沿 Facepunch 官方 markup 查询，而不是依赖人工维护的类型表。
 - compiler realm 检查和 LSP hover、completion、signature help、workspace command、GMod 官方文档 code action 共用同一个 `gmod-api-db` 查询接口。
-- `vscode-lux` 已经具备完整扩展壳：TextMate grammar、semantic token scopes、snippets、settings、server resolution、编辑器命令、quick-fix command handling 和 VSIX packaging。
-- GitHub Actions 会构建 Rust server，打包 VS Code extension，并在 tag release 中附带 VSIX 和预构建 server archive。
+- `vscode-lux` 已经具备完整扩展壳：TextMate grammar、semantic token scopes、snippets、settings、`luxc` resolution、编辑器命令、quick-fix command handling 和 VSIX packaging。
+- VSIX 发布产物只包含编辑器集成，不内置 `lux-lsp` server binary；用户提供自己希望编辑器使用的 compiler toolchain。
 
 ## 本地开发
 
 ```powershell
 cargo test
-cargo run -p lux-lsp
+cargo run --manifest-path ..\compiler\Cargo.toml -- lsp
 ```
 
 需要排查文档变更和 diagnostics 生命周期时，可以在启动 server 前设置
-`LUX_LSP_DEBUG=1` 输出调试日志。
+`LUXC_LSP_DEBUG=1` 输出调试日志。
 
 构建和打包 VS Code 扩展：
 
@@ -50,13 +49,7 @@ npm run compile
 npm run package
 ```
 
-release workflow 会构建这些 server binary：
-
-- `windows-x64`
-- `linux-x64`
-- `macos-arm64`
-
-随后 workflow 会把这些 binary 复制到 `vscode-lux/server/<platform>/`，打包 VSIX，并把 standalone server archive 和 VSIX 一起上传到 GitHub Release。
+VS Code 包有意保持为 launcher 和 UI 壳，不构建也不内置 language server。本地测试时，把 `lux.compiler.path` 指向你希望编辑器启动的 `luxc`。
 
 更新内置官方 GMod API 数据库：
 
@@ -71,7 +64,7 @@ luxc gmod api update `
 
 不要把这条链路替换成手写 API 表。手写数据只能作为测试 fixture，或作为官方数据生成后叠加的、经过审查且可追溯的 override patch。
 
-在 Lux 主仓库中，本仓库作为 `lsp` submodule 存在。`lux-lsp` 依赖相邻的 `../compiler` crate，因此推荐从主仓库克隆并初始化 submodule 后开发。
+在 Lux 主仓库中，本仓库作为 `lsp` submodule 存在。compiler 依赖 `gmod-api-db`，VS Code 扩展通过 `luxc lsp` 启动 compiler 提供的语言服务。
 
 ## 标准文档
 
@@ -104,12 +97,18 @@ Lux 还必须在此基础上提供 GLua 工具无法提供的增强：
 
 ## VS Code
 
-扩展启动 `lux-lsp` 的顺序是：
+扩展通过下面的命令启动 language server：
 
-1. `lux.lsp.serverPath`
-2. VSIX 内置的 `server/<platform>/` 预构建二进制
-3. `PATH` 中的 `lux-lsp`
-4. 只有显式开启 development fallback 时，才执行 `cargo run -p lux-lsp`
+```text
+luxc lsp
+```
+
+扩展按这个顺序查找 `luxc`：
+
+1. `lux.compiler.path`
+2. workspace `.lux/bin/luxc`
+3. `LUXC` 环境变量
+4. `PATH` 中的 `luxc`
 
 编辑器命令包括：重启 server、打开 Lux 文档、打开 GMod 官方文档、更新 GMod API 数据库、编译当前项目、格式化当前文档、显示 module exports、显示当前位置 realm、显示生成的 API 覆盖率。
 

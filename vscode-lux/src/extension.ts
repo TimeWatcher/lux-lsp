@@ -86,7 +86,7 @@ async function restartLanguageServer(context: vscode.ExtensionContext): Promise<
 }
 
 async function startLanguageServer(context: vscode.ExtensionContext): Promise<void> {
-  const serverOptions = resolveServerOptions(context);
+  const serverOptions = resolveServerOptions();
   const clientOptions: LanguageClientOptions = {
     documentSelector: [
       { scheme: "file", language: "lux" },
@@ -205,37 +205,18 @@ function markdownUri(uri: vscode.Uri): string {
   return uri.toString().replace(/[\[\]]/g, "\\$&");
 }
 
-function resolveServerOptions(context: vscode.ExtensionContext): ServerOptions {
-  const configured = config().get<string>("lsp.serverPath", "").trim();
-  if (configured.length > 0) {
-    return commandServerOptions(configured);
+function resolveServerOptions(): ServerOptions {
+  const luxc = resolveLuxcPath();
+  if (!luxc) {
+    throw new Error("No luxc binary found. Set `lux.compiler.path`, add workspace `.lux/bin/luxc`, set `LUXC`, or install luxc on PATH.");
   }
-
-  const bundled = findBundledBinary(context, "lux-lsp");
-  if (bundled) {
-    return commandServerOptions(bundled);
-  }
-
-  if (isCommandAvailable("lux-lsp")) {
-    return commandServerOptions("lux-lsp");
-  }
-
-  if (config().get<boolean>("lsp.developmentCargoFallback", false)) {
-    const cwd = config().get<string>("lsp.developmentWorkspace", "").trim() || workspaceRoot();
-    return {
-      command: "cargo",
-      args: ["run", "-q", "-p", "lux-lsp"],
-      options: { cwd }
-    };
-  }
-
-  throw new Error("No lux-lsp binary found. Set `lux.lsp.serverPath`, install `lux-lsp` on PATH, or install a VSIX with bundled server binaries.");
+  return commandServerOptions(luxc, ["lsp"]);
 }
 
-function commandServerOptions(command: string): ServerOptions {
+function commandServerOptions(command: string, args: string[] = []): ServerOptions {
   return {
-    run: { command, args: [] },
-    debug: { command, args: [] }
+    run: { command, args },
+    debug: { command, args }
   };
 }
 
@@ -338,27 +319,27 @@ function resolveLuxcPath(): string | undefined {
   if (configured.length > 0) {
     return configured;
   }
-  const bundled = findBundledBinary(undefined, "luxc");
-  if (bundled) {
-    return bundled;
+  const workspaceToolchain = findWorkspaceToolchain("luxc");
+  if (workspaceToolchain) {
+    return workspaceToolchain;
+  }
+  const envLuxc = (process.env.LUXC ?? "").trim();
+  if (envLuxc.length > 0) {
+    return envLuxc;
   }
   return isCommandAvailable("luxc") ? "luxc" : undefined;
 }
 
-function findBundledBinary(context: vscode.ExtensionContext | undefined, baseName: string): string | undefined {
-  const platform = process.platform === "win32"
-    ? "windows-x64"
-    : process.platform === "darwin"
-      ? process.arch === "arm64" ? "macos-arm64" : "macos-x64"
-      : "linux-x64";
+function findWorkspaceToolchain(baseName: string): string | undefined {
   const exe = process.platform === "win32" ? `${baseName}.exe` : baseName;
-  const root = context?.extensionPath ?? path.resolve(__dirname, "..");
-  const candidates = [
-    path.join(root, "server", platform, exe),
-    path.join(root, "bin", platform, exe),
-    path.join(root, "bin", exe)
-  ];
-  return candidates.find((candidate) => fs.existsSync(candidate));
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  for (const folder of folders) {
+    const candidate = path.join(folder.uri.fsPath, ".lux", "bin", exe);
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return undefined;
 }
 
 function isCommandAvailable(command: string): boolean {

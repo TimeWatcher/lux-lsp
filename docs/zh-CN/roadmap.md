@@ -10,12 +10,12 @@
 
 - 已完成：从 Lux 编译器抽出稳定分析 API。
 - 已完成：提供 parse、resolve、module graph、part order、realm stack、diagnostics、formatting、hover、completion、definition、semantic tokens 和 code action 数据。
-- 已完成：CLI、LSP 和测试共享同一套语义入口。
+- 已完成：CLI、`luxc lsp` 和测试共享同一套语义入口。
 - 已完成：测试覆盖 multi-part module、export alias、unknown external、UTF-16 position、realm domain block、use-before-init。
 
 ## Phase 2：LSP Server 基础层
 
-- 已完成：实现 LSP 3.17 server。
+- 已完成：在 `luxc` 内实现 LSP 3.17 server。
 - 已完成：支持 initialize、text sync、diagnostics、hover、completion、definition、formatting、semantic tokens、code action。
 - 已完成：先接 Lux 自身符号，不依赖 GMod API DB 即可运行。
 - 已完成：使用 workspace root + in-memory overlay 分析未保存文件。
@@ -57,17 +57,16 @@
 - 已完成：`vscode-lux` 提供 TextMate grammar 和 language configuration。
 - 已完成：把 LSP semantic token types 映射到稳定 VS Code scope。
 - 已完成：提供 import、export、realm declaration、realm block、enum、match、extern 和 hook callback snippets。
-- 已完成：提供 server path、compiler path、文档 URL、trace、development fallback 等设置。
+- 已完成：提供 compiler path、文档 URL 和 LSP trace 等设置。
 - 已完成：提供重启 server、打开文档、打开 GMod 文档、更新 API 数据库、编译项目、格式化文档、显示 module exports、显示 active realm、显示 GMod API 覆盖率等命令。
 - 已完成：quick-fix command 通过 VS Code command 和 LSP `workspace/executeCommand` 运行；TypeScript 扩展不重复实现 Lux resolver。
-- 已完成：server binary 查找顺序为用户配置、VSIX 内置、PATH、显式 development cargo fallback。
+- 已完成：从用户配置、workspace `.lux/bin`、`LUXC` 或 PATH 查找 `luxc`，然后启动 `luxc lsp`。
 - 已完成：使用 `@vscode/vsce` 打包 VSIX。
 
 ## Phase 7：Release
 
-- 已完成：GitHub Actions 构建 Windows、Linux 和 macOS 的 LSP server 二进制。
-- 已完成：tagged release 附带预构建 server archive。
-- 已完成：release workflow 打包内置 server binary 的 VSIX。
+- 已完成：language server 语义随 compiler 作为 `luxc lsp` 发布。
+- 已完成：VSIX release artifact 保持为 UI 和转发壳，不内置 server binary。
 - 已完成：文档站加入 LSP 和 VS Code 安装页面。
 - 已完成：Lux 主仓库 README 已链接到 LSP 仓库和公开文档。
 

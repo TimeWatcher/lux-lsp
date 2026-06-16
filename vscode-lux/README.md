@@ -1,6 +1,7 @@
 # Lux for VS Code
 
-This extension provides Lux editor support backed by `lux-lsp`.
+This extension provides Lux editor support by launching the workspace compiler
+as `luxc lsp`.
 
 ## Features
 
@@ -12,27 +13,32 @@ This extension provides Lux editor support backed by `lux-lsp`.
 
 ## Server Resolution
 
-The extension starts `lux-lsp` in this order:
+The extension starts the language server with:
 
-1. `lux.lsp.serverPath`
-2. bundled VSIX server binary under `server/<platform>/`
-3. `lux-lsp` on `PATH`
-4. `cargo run -p lux-lsp`, only when `lux.lsp.developmentCargoFallback` is enabled
+```text
+luxc lsp
+```
 
-The TypeScript extension does not reimplement the Lux resolver. It delegates Lux semantics to `lux-lsp` and the compiler analysis API.
+It resolves `luxc` in this order:
+
+1. `lux.compiler.path`
+2. workspace `.lux/bin/luxc`
+3. `LUXC` environment variable
+4. `luxc` on `PATH`
+
+The TypeScript extension does not reimplement the Lux resolver and does not
+bundle a language server. Lux semantics come from the selected compiler.
 
 ## Settings
 
-- `lux.lsp.serverPath`: explicit language server path.
-- `lux.compiler.path`: explicit `luxc` path for extension commands.
+- `lux.compiler.path`: explicit `luxc` path for `luxc lsp` and extension commands.
 - `lux.lsp.trace.server`: LSP protocol tracing.
-- `lux.lsp.developmentCargoFallback`: development-only cargo fallback.
 - `lux.docs.url`: Lux documentation URL.
 - `lux.gmod.docsUrl`: Facepunch GMod documentation base URL.
 
 ## Packaging
 
-Release builds bundle precompiled `lux-lsp` binaries. Local development can run:
+Release builds package only the VS Code UI and forwarding shell. Local development can run:
 
 ```powershell
 npm install

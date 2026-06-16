@@ -323,7 +323,7 @@ Lux: Format Current Document
 
 ```json
 {
-  "lux.lsp.serverPath": null,
+  "lux.compiler.path": null,
   "lux.gmod.apiDatabasePath": null,
   "lux.gmod.apiAutoUpdate": false,
   "lux.gmod.unknownExternal": "warn",
