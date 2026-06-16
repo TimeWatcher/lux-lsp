@@ -4,6 +4,7 @@
   "description": "Lux language support for Garry's Mod addons: LSP diagnostics, completion, hover, formatting, semantic highlighting, and GMod API documentation.",
   "version": "0.1.0",
   "publisher": "timewatcher",
+  "icon": "resources/lux-icon.png",
   "license": "MIT OR Apache-2.0",
   "repository": {
     "type": "git",
