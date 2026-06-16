@@ -35,7 +35,12 @@ The Phase 1, Phase 2, and core Phase 3 foundation is in place:
 - Completion is connected to Lux module/export semantics: module paths, export
   lists, import specifiers, and regular bindings are selected by context.
 - Hover and definition support module-private bindings, export aliases, import
-  bindings, and unknown external symbols.
+  bindings, cross-part definitions, imported module exports, and unknown
+  external symbols.
+- Signature help is available for Lux functions discovered by compiler
+  analysis, in addition to GMod functions, methods, and hooks.
+- Known Lux function calls report `CALL001` diagnostics when the argument count
+  does not match the discovered signature.
 - Diagnostics and quick fixes come from compiler analysis, including guided
   `extern` suggestions for unknown external symbols.
 - `gmod-api-db` now has a generated offline database built from the official
@@ -59,7 +64,7 @@ The Phase 1, Phase 2, and core Phase 3 foundation is in place:
 - `vscode-lux` ships a complete extension shell: TextMate grammar, semantic
   token scopes, snippets, settings, `luxc` resolution, editor commands,
   quick-fix command handling, and VSIX packaging.
-- Release VSIX artifacts contain the editor integration only. They do not bundle
+- Packaged VSIX artifacts contain the editor integration only. They do not bundle
   a `lux-lsp` server binary; users provide the compiler toolchain they want the
   editor to use.
 
@@ -141,8 +146,10 @@ Lux then adds language-aware features that GLua tooling cannot provide:
 
 - realm-aware completion and diagnostics
 - smart import/export completion based on module public APIs
-- navigation across multi-part modules
-- hover for exports, aliases, internal bindings, and realm availability
+- navigation across multi-part modules and imported module exports
+- hover for exports, aliases, internal bindings, imported definitions, function
+  signatures, and realm availability
+- Lux function signature help and argument-count diagnostics
 - formatting and semantic tokens for Lux syntax
 
 ## VS Code

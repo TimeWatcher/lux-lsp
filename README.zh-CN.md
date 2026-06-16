@@ -20,7 +20,9 @@ Phase 1、Phase 2 和 Phase 3 核心基础已经落地：
 - server 通过内存 overlay 分析未保存文件，不解析 `luxc` 命令行输出。
 - server 支持 LSP 3.17 初始化、全文同步、diagnostics、hover、completion、definition、formatting、semantic tokens、code action 和 workspace command。
 - completion 已接入 Lux module/export 语义：module path、export list、import specifier 和普通 binding 会按上下文返回。
-- hover 和 definition 已支持 module 内部 binding、export alias、import binding、unknown external。
+- hover 和 definition 已支持 module 内部 binding、export alias、import binding、跨 part 定义、导入模块 export 和 unknown external。
+- compiler analysis 发现的 Lux function 已支持 signature help；GMod function、method 和 hook 仍然使用官方 API 数据库提供签名。
+- 已知 Lux function call 的参数数量不匹配时会报告 `CALL001` diagnostics。
 - diagnostics 和 quick fix 已由 compiler analysis API 生成，包括 unknown external 的 `extern` 建议。
 - `gmod-api-db` 已经内置由 Facepunch 官方 Wiki JSON 页表和单页 markup 生成的离线数据库。official pagelist 是覆盖率基准，主数据库不能由人工维护表替代。
 - 发布质量要求完整官方覆盖：Facepunch pagelist 中的每个页面都必须进入 `documents[]`，每个 API 候选页都必须转换成结构化 API 数据，并且 bundled coverage manifest 必须保持 0 failed、0 fallback。
@@ -28,7 +30,7 @@ Phase 1、Phase 2 和 Phase 3 核心基础已经落地：
 - 官方 class 和 Derma panel 的 parent metadata 已进入数据库，因此继承方法补全和文档解析沿 Facepunch 官方 markup 查询，而不是依赖人工维护的类型表。
 - compiler realm 检查和 LSP hover、completion、signature help、workspace command、GMod 官方文档 code action 共用同一个 `gmod-api-db` 查询接口。
 - `vscode-lux` 已经具备完整扩展壳：TextMate grammar、semantic token scopes、snippets、settings、`luxc` resolution、编辑器命令、quick-fix command handling 和 VSIX packaging。
-- VSIX 发布产物只包含编辑器集成，不内置 `lux-lsp` server binary；用户提供自己希望编辑器使用的 compiler toolchain。
+- VSIX 打包产物只包含编辑器集成，不内置 `lux-lsp` server binary；用户提供自己希望编辑器使用的 compiler toolchain。
 
 ## 本地开发
 
@@ -91,8 +93,9 @@ Lux 还必须在此基础上提供 GLua 工具无法提供的增强：
 
 - realm-aware 补全和诊断
 - 基于 module public API 的 import/export 智能补全
-- 跨多 part module 的定义跳转
-- export、alias、内部 binding、realm availability 的 hover
+- 跨多 part module 和 imported module export 的定义跳转
+- export、alias、内部 binding、导入定义、function signature、realm availability 的 hover
+- Lux function signature help 和参数数量 diagnostics
 - Lux 语法的格式化和 semantic tokens
 
 ## VS Code

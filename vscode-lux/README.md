@@ -8,6 +8,7 @@ as `luxc lsp`.
 - Lux TextMate grammar and semantic tokens.
 - LSP diagnostics, completion, hover, definition, formatting, and code actions.
 - Realm-aware import/export assistance from the Lux compiler analysis API.
+- Cross-part and imported-module hover, definition, signature help, and argument-count diagnostics for Lux functions.
 - GMod API hover, signature help, hook assistance, and official documentation actions.
 - Commands for restarting the server, showing module exports, showing the active realm, compiling the current project, and updating the bundled GMod API database.
 
