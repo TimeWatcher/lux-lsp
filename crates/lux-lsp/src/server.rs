@@ -3757,10 +3757,10 @@ mod tests {
 
     #[test]
     fn manifest_extern_insert_position_targets_existing_section() {
-        let text = "source_root = \"src\"\n\n[target.gmod.extern]\nA = \"shared\"\n\n[gmod]\naddon_root = \".\"\n";
+        let text = "[target.gmod]\nsource_root = \"src\"\nout = \"generated/lua\"\n\n[target.gmod.extern]\nA = \"shared\"\n";
         assert_eq!(
             manifest_section_insert_position(text, "target.gmod.extern"),
-            Some((5, 0))
+            Some((6, 0))
         );
     }
 
@@ -3778,12 +3778,12 @@ mod tests {
         std::fs::create_dir_all(source.parent().expect("source parent")).expect("source dir");
         std::fs::write(
             root.join("lux.toml"),
-            "source_root = \"src\"\naddon_root = \"out\"\n",
+            "[target.gmod]\nsource_root = \"src\"\nout = \"generated/lua\"\n",
         )
         .expect("root manifest");
         std::fs::write(
             project.join("lux.toml"),
-            "source_root = \"src\"\naddon_root = \"generated\"\n",
+            "[target.gmod]\nsource_root = \"src\"\nout = \"generated/lua\"\n",
         )
         .expect("project manifest");
         std::fs::write(&source, "").expect("source");
@@ -3831,7 +3831,7 @@ mod tests {
         write_runtime_package(&package_root, "@vendor/ui", "mount");
         std::fs::write(
             project.join("lux.toml"),
-            "package_id = \"demo\"\nbundle_id = \"demo\"\n\n[gmod]\nsource_root = \"src\"\naddon_root = \"generated\"\n\n[dependencies]\n\"@vendor/ui\" = { path = \"../package-set\" }\n",
+            "package_id = \"demo\"\nbundle_id = \"demo\"\n\n[target.gmod]\nsource_root = \"src\"\nout = \"generated/lua\"\nruntime_base = \"lux/demo\"\nautorun = true\n\n[dependencies]\n\"@vendor/ui\" = { path = \"../package-set\" }\n",
         )
         .expect("manifest");
         let source = source_root.join("module.lux");
@@ -3956,7 +3956,7 @@ mod tests {
         write_runtime_package(&package_root, "@vendor/ui", "Button");
         std::fs::write(
             project.join("lux.toml"),
-            "package_id = \"game\"\nbundle_id = \"game\"\n\n[gmod]\nsource_root = \"src\"\naddon_root = \"generated\"\n\n[dependencies]\n\"@vendor/ui\" = { path = \"../package-set\" }\n",
+            "package_id = \"game\"\nbundle_id = \"game\"\n\n[target.gmod]\nsource_root = \"src\"\nout = \"generated/lua\"\nruntime_base = \"lux/game\"\nautorun = true\n\n[dependencies]\n\"@vendor/ui\" = { path = \"../package-set\" }\n",
         )
         .expect("manifest");
         lock_project(&LockRequest {
