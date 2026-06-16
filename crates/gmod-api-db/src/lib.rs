@@ -598,7 +598,7 @@ pub fn entry_markdown(entry: &ApiEntry) -> String {
 
     for signature in &entry.signatures {
         out.push_str("\n\n---\n\n**Signature**\n\n```lua\n");
-        out.push_str(&signature.label);
+        out.push_str(&format_signature_label(&signature.label));
         out.push_str("\n```");
         append_parameters(&mut out, signature);
     }
@@ -626,7 +626,7 @@ pub fn hook_markdown(hook: &HookEntry) -> String {
     out.push_str(&realm_inline(hook.realm));
     out.push_str(" |");
     out.push_str("\n\n---\n\n**Callback**\n\n```lua\n");
-    out.push_str(&hook.callback.label);
+    out.push_str(&format_signature_label(&hook.callback.label));
     out.push_str("\n```");
     append_parameters(&mut out, &hook.callback);
     append_sections(&mut out, &hook.description, "Details");
@@ -640,13 +640,12 @@ pub fn hook_markdown(hook: &HookEntry) -> String {
 fn append_parameters(out: &mut String, signature: &ApiSignature) {
     if !signature.parameters.is_empty() {
         out.push_str("\n\n**Parameters**\n\n");
-        out.push_str("| Name | Type | Notes |\n| --- | --- | --- |");
         for parameter in &signature.parameters {
-            out.push_str("\n| `");
+            out.push_str("- `");
             out.push_str(&parameter.name);
-            out.push_str("` | `");
+            out.push_str("` `");
             out.push_str(&parameter.ty);
-            out.push_str("` | ");
+            out.push('`');
             let mut notes = Vec::new();
             if parameter.optional {
                 notes.push("optional".to_string());
@@ -655,34 +654,112 @@ fn append_parameters(out: &mut String, signature: &ApiSignature) {
                 notes.push(format!("default `{default}`"));
             }
             if !parameter.description.is_empty() {
-                notes.push(clean_table_cell(&parameter.description));
+                notes.push(clean_markdown_text(&parameter.description));
             }
-            out.push_str(&notes.join("; "));
-            out.push_str(" |");
+            if !notes.is_empty() {
+                out.push_str(" - ");
+                out.push_str(&notes.join("; "));
+            }
+            out.push('\n');
         }
     }
     if !signature.returns.is_empty() {
         out.push_str("\n\n**Returns**\n\n");
-        out.push_str("| Type | Name | Description |\n| --- | --- | --- |");
         for return_value in &signature.returns {
-            out.push_str("\n| ");
+            out.push_str("- ");
             out.push_str(&type_icon(&return_value.ty));
             out.push(' ');
             out.push('`');
             out.push_str(&return_value.ty);
-            out.push_str("` | ");
+            out.push('`');
             if !return_value.name.is_empty() {
+                out.push(' ');
                 out.push('`');
                 out.push_str(&return_value.name);
                 out.push('`');
             }
-            out.push_str(" | ");
             if !return_value.description.is_empty() {
-                out.push_str(&clean_table_cell(&return_value.description));
+                out.push_str(" - ");
+                out.push_str(&clean_markdown_text(&return_value.description));
             }
-            out.push_str(" |");
+            out.push('\n');
         }
     }
+}
+
+fn format_signature_label(label: &str) -> String {
+    const MAX_INLINE_SIGNATURE_LEN: usize = 68;
+    if label.chars().count() <= MAX_INLINE_SIGNATURE_LEN {
+        return label.to_string();
+    }
+    let Some(open_index) = label.find('(') else {
+        return label.to_string();
+    };
+    let Some(args) = label.strip_suffix(')').map(|text| &text[open_index + 1..]) else {
+        return label.to_string();
+    };
+    let args = split_signature_args(args);
+    if args.len() <= 1 {
+        return label.to_string();
+    }
+    let mut formatted = String::new();
+    formatted.push_str(&label[..open_index]);
+    formatted.push_str("(\n");
+    for (index, arg) in args.iter().enumerate() {
+        formatted.push_str("  ");
+        formatted.push_str(arg);
+        if index + 1 < args.len() {
+            formatted.push(',');
+        }
+        formatted.push('\n');
+    }
+    formatted.push(')');
+    formatted
+}
+
+fn split_signature_args(args: &str) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let mut start = 0usize;
+    let mut depth = 0usize;
+    let mut quote = None::<char>;
+    let mut escaped = false;
+
+    for (index, ch) in args.char_indices() {
+        if let Some(quote_char) = quote {
+            if escaped {
+                escaped = false;
+                continue;
+            }
+            if ch == '\\' {
+                escaped = true;
+                continue;
+            }
+            if ch == quote_char {
+                quote = None;
+            }
+            continue;
+        }
+
+        match ch {
+            '"' | '\'' => quote = Some(ch),
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => depth = depth.saturating_sub(1),
+            ',' if depth == 0 => {
+                let part = args[start..index].trim();
+                if !part.is_empty() {
+                    parts.push(part);
+                }
+                start = index + ch.len_utf8();
+            }
+            _ => {}
+        }
+    }
+
+    let part = args[start..].trim();
+    if !part.is_empty() {
+        parts.push(part);
+    }
+    parts
 }
 
 fn append_sections(out: &mut String, sections: &[String], title: &str) {
@@ -806,13 +883,13 @@ fn type_icon(ty: &str) -> &'static str {
     }
 }
 
-fn clean_table_cell(value: &str) -> String {
+fn clean_markdown_text(value: &str) -> String {
     value
         .trim()
         .trim_start_matches("\">")
         .trim_start_matches('>')
         .trim()
-        .replace('\n', "<br>")
+        .replace('\n', " ")
         .replace('|', "\\|")
 }
 
@@ -842,7 +919,7 @@ fn bundled_database_text() -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{ApiDocumentStatus, ApiIndex, ApiRealm, entry_markdown};
+    use super::{ApiDocumentStatus, ApiIndex, ApiRealm, entry_markdown, format_signature_label};
 
     #[test]
     fn longest_path_lookup_prefers_member_data() {
@@ -871,7 +948,36 @@ mod tests {
     }
 
     #[test]
-    fn markdown_sanitizes_table_cells_for_hover_renderer() {
+    fn markdown_uses_list_layout_for_long_completion_docs() {
+        let index = ApiIndex::bundled();
+        let entry = index
+            .entry("player_manager.AddValidHands")
+            .expect("player_manager.AddValidHands");
+        let markdown = entry_markdown(entry);
+        assert!(
+            markdown.contains("player_manager.AddValidHands(\n  name,\n  model,"),
+            "{markdown}"
+        );
+        assert!(
+            markdown.contains("- `bodygroups` `string` - optional; default `0000000`;"),
+            "{markdown}"
+        );
+        assert!(!markdown.contains("| Name | Type | Notes |"), "{markdown}");
+    }
+
+    #[test]
+    fn long_signature_formatting_preserves_nested_commas() {
+        let formatted = format_signature_label(
+            "draw.RoundedBox(cornerRadius, x, y, width, height, color = Color(255, 255, 255))",
+        );
+        assert!(
+            formatted.contains("  color = Color(255, 255, 255)\n)"),
+            "{formatted}"
+        );
+    }
+
+    #[test]
+    fn markdown_sanitizes_hover_renderer_text() {
         let index = ApiIndex::bundled();
         let entry = index.entry("player.GetAll").expect("player.GetAll");
         let markdown = entry_markdown(entry);
@@ -892,7 +998,10 @@ mod tests {
             .map(|entry| entry.path.as_str())
             .collect::<Vec<_>>();
 
-        assert!(paths.iter().any(|path| *path == "player.GetAll"), "{paths:#?}");
+        assert!(
+            paths.iter().any(|path| *path == "player.GetAll"),
+            "{paths:#?}"
+        );
         assert!(!paths.iter().any(|path| *path == "player"), "{paths:#?}");
         assert!(
             !paths.iter().any(|path| *path == "player_manager"),
