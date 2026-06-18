@@ -2,7 +2,7 @@
   "name": "lux-gmod",
   "displayName": "Lux",
   "description": "Lux language support for Garry's Mod addons: LSP diagnostics, completion, hover, formatting, semantic highlighting, and GMod API documentation.",
-  "version": "0.1.1",
+  "version": "0.1.5",
   "publisher": "Althurdinok",
   "icon": "resources/lux-icon.png",
   "license": "MIT OR Apache-2.0",
@@ -46,7 +46,7 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "check": "tsc -p ./ --noEmit",
-    "package": "vsce package"
+    "package": "npm run compile && vsce package"
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"
