@@ -12,7 +12,7 @@ use gmod_api_db::{
 use regex::Regex;
 use serde::Deserialize;
 
-const PARSER_VERSION: &str = "facepunch-json-markup-v1";
+const PARSER_VERSION: &str = "facepunch-json-markup-v2";
 const DEFAULT_BASE_URL: &str = "https://wiki.facepunch.com/gmod";
 
 pub fn run_from_env() -> Result<UpdateSummary, String> {
@@ -1400,27 +1400,48 @@ struct TagBlock {
 }
 
 fn tag_blocks(markup: &str, name: &str) -> Vec<TagBlock> {
-    let pattern = format!(
-        r#"(?is)<{}\b([^>]*)>(.*?)</{}>"#,
-        regex::escape(name),
-        regex::escape(name)
-    );
-    let regex = Regex::new(&pattern).expect("tag regex");
-    regex
-        .captures_iter(markup)
-        .map(|captures| TagBlock {
-            attrs: captures
-                .get(1)
-                .map(|m| m.as_str())
-                .unwrap_or_default()
-                .to_string(),
-            body: captures
-                .get(2)
-                .map(|m| m.as_str())
-                .unwrap_or_default()
-                .to_string(),
-        })
-        .collect()
+    let mut blocks = Vec::new();
+    let mut search_from = 0;
+    while let Some(open) = find_tag(markup, name, search_from) {
+        let TagMatchKind::Open { self_closing } = open.kind else {
+            search_from = open.end + 1;
+            continue;
+        };
+        search_from = open.end + 1;
+        if self_closing {
+            continue;
+        }
+
+        let body_start = open.end + 1;
+        let mut depth = 1usize;
+        let mut cursor = body_start;
+        while let Some(next) = find_tag(markup, name, cursor) {
+            cursor = next.end + 1;
+            match next.kind {
+                TagMatchKind::Open { self_closing } => {
+                    if !self_closing {
+                        depth += 1;
+                    }
+                }
+                TagMatchKind::Close => {
+                    depth -= 1;
+                    if depth == 0 {
+                        blocks.push(TagBlock {
+                            attrs: markup[open.name_end..open.end]
+                                .trim()
+                                .trim_end_matches('/')
+                                .trim_end()
+                                .to_string(),
+                            body: markup[body_start..next.start].to_string(),
+                        });
+                        search_from = next.end + 1;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    blocks
 }
 
 fn first_tag_raw(markup: &str, name: &str) -> Option<String> {
@@ -1428,6 +1449,83 @@ fn first_tag_raw(markup: &str, name: &str) -> Option<String> {
         .into_iter()
         .next()
         .map(|block| block.body)
+}
+
+#[derive(Debug, Clone, Copy)]
+struct TagMatch {
+    start: usize,
+    end: usize,
+    name_end: usize,
+    kind: TagMatchKind,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum TagMatchKind {
+    Open { self_closing: bool },
+    Close,
+}
+
+fn find_tag(markup: &str, name: &str, from: usize) -> Option<TagMatch> {
+    let mut cursor = from;
+    while cursor < markup.len() {
+        let relative = markup[cursor..].find('<')?;
+        let start = cursor + relative;
+        let mut name_start = start + 1;
+        let closing = markup.as_bytes().get(name_start).copied() == Some(b'/');
+        if closing {
+            name_start += 1;
+        }
+        let name_end = name_start + name.len();
+        if tag_name_matches(markup, name_start, name) && tag_name_has_boundary(markup, name_end) {
+            let end = find_tag_end(markup, start)?;
+            let self_closing = !closing && is_self_closing_tag(&markup[start + 1..end]);
+            return Some(TagMatch {
+                start,
+                end,
+                name_end,
+                kind: if closing {
+                    TagMatchKind::Close
+                } else {
+                    TagMatchKind::Open { self_closing }
+                },
+            });
+        }
+        cursor = start + 1;
+    }
+    None
+}
+
+fn tag_name_matches(markup: &str, start: usize, name: &str) -> bool {
+    let Some(candidate) = markup.as_bytes().get(start..start + name.len()) else {
+        return false;
+    };
+    candidate.eq_ignore_ascii_case(name.as_bytes())
+}
+
+fn tag_name_has_boundary(markup: &str, index: usize) -> bool {
+    matches!(
+        markup.as_bytes().get(index).copied(),
+        Some(b'>') | Some(b'/') | Some(b' ') | Some(b'\t') | Some(b'\r') | Some(b'\n')
+    )
+}
+
+fn find_tag_end(markup: &str, start: usize) -> Option<usize> {
+    let bytes = markup.as_bytes();
+    let mut quote = None;
+    for (index, byte) in bytes.iter().enumerate().skip(start + 1) {
+        match quote {
+            Some(quote_byte) if *byte == quote_byte => quote = None,
+            Some(_) => {}
+            None if matches!(*byte, b'"' | b'\'') => quote = Some(*byte),
+            None if *byte == b'>' => return Some(index),
+            None => {}
+        }
+    }
+    None
+}
+
+fn is_self_closing_tag(tag_inner: &str) -> bool {
+    tag_inner.trim_end().ends_with('/')
 }
 
 fn attributes(input: &str) -> BTreeMap<String, String> {
@@ -1738,6 +1836,73 @@ mod tests {
         assert_eq!(hooks[0].name, "PlayerInitialSpawn");
         assert_eq!(hooks[0].gm_path, "GM:PlayerInitialSpawn");
         assert_eq!(hooks[0].callback.parameters[0].ty, "Player");
+    }
+
+    #[test]
+    fn parses_only_top_level_function_args() {
+        let page = WikiPage {
+            title: "concommand.Add".into(),
+            tags: "function method member realm-client realm-server realm-menu example".into(),
+            address: "concommand.Add".into(),
+            update_count: Some(1),
+            markup: r#"
+<function name="Add" parent="concommand" type="libraryfunc">
+  <description>Creates a console command.</description>
+  <realm>Shared and Menu</realm>
+  <args>
+    <arg name="name" type="string">The command name.</arg>
+    <arg name="callback" type="function">The callback.
+      <callback>
+        <arg name="ply" type="Player">The player.</arg>
+        <arg name="cmd" type="string">The command.</arg>
+        <arg name="args" type="table">The arguments.</arg>
+        <arg name="argStr" type="string">The raw arguments.</arg>
+      </callback>
+    </arg>
+    <arg name="autoComplete" type="function" default="nil">The autocomplete callback.
+      <callback>
+        <arg name="cmd" type="string">The command.</arg>
+        <arg name="argStr" type="string">The raw arguments.</arg>
+        <arg name="args" type="table">The arguments.</arg>
+        <ret name="tbl" type="table">The options.</ret>
+      </callback>
+    </arg>
+    <arg name="helpText" type="string" default="nil">The help text.</arg>
+    <arg name="flags" type="number{FCVAR}|table<number>" default="0">Console command flags.</arg>
+  </args>
+</function>
+"#
+            .into(),
+        };
+
+        let (entries, hooks) = parse_function_blocks(&page, &source());
+        assert!(hooks.is_empty());
+        let signature = &entries[0].signatures[0];
+        assert_eq!(
+            signature.label,
+            "concommand.Add(name, callback, autoComplete = nil, helpText = nil, flags = 0)"
+        );
+        assert_eq!(
+            signature
+                .parameters
+                .iter()
+                .map(|parameter| parameter.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["name", "callback", "autoComplete", "helpText", "flags"]
+        );
+        assert_eq!(signature.parameters[4].ty, "number{FCVAR}|table<number>");
+        assert_eq!(signature.parameters[4].default.as_deref(), Some("0"));
+        assert!(
+            signature.parameters[1]
+                .description
+                .contains("The callback.")
+        );
+        assert!(signature.parameters[1].description.contains("The player."));
+        assert!(
+            signature.parameters[2]
+                .description
+                .contains("The autocomplete callback.")
+        );
     }
 
     #[test]

@@ -990,6 +990,28 @@ mod tests {
     }
 
     #[test]
+    fn bundled_concommand_add_signature_keeps_callback_args_nested() {
+        let index = ApiIndex::bundled();
+        let entry = index.entry("concommand.Add").expect("concommand.Add");
+        let signature = entry.signatures.first().expect("signature");
+
+        assert_eq!(
+            signature.label,
+            "concommand.Add(name, callback, autoComplete = nil, helpText = nil, flags = 0)"
+        );
+        assert_eq!(
+            signature
+                .parameters
+                .iter()
+                .map(|parameter| parameter.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["name", "callback", "autoComplete", "helpText", "flags"]
+        );
+        assert_eq!(signature.parameters[4].ty, "number{FCVAR}|table<number>");
+        assert_eq!(signature.parameters[4].default.as_deref(), Some("0"));
+    }
+
+    #[test]
     fn member_prefix_completion_keeps_delimiter_boundary() {
         let index = ApiIndex::bundled();
         let paths = index
