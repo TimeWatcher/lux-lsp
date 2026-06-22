@@ -1355,7 +1355,10 @@ fn dedupe_and_sort(
 ) {
     let mut by_path = BTreeMap::<String, ApiEntry>::new();
     for entry in entries.drain(..) {
-        by_path.entry(entry.path.clone()).or_insert(entry);
+        by_path
+            .entry(entry.path.clone())
+            .and_modify(|existing| merge_entry_metadata(existing, &entry))
+            .or_insert(entry);
     }
     entries.extend(by_path.into_values());
 
@@ -1371,6 +1374,58 @@ fn dedupe_and_sort(
             methods.entry(method.path.clone()).or_insert(method);
         }
         class.methods.extend(methods.into_values());
+    }
+}
+
+fn merge_entry_metadata(existing: &mut ApiEntry, incoming: &ApiEntry) {
+    if existing.summary.is_empty() {
+        existing.summary = incoming.summary.clone();
+    }
+    if existing.description.is_empty() {
+        existing.description = incoming.description.clone();
+    }
+    extend_unique_by(
+        &mut existing.signatures,
+        &incoming.signatures,
+        |signature| signature.label.clone(),
+    );
+    append_unique(&mut existing.warnings, &incoming.warnings);
+    append_unique(&mut existing.notes, &incoming.notes);
+    extend_unique_by(&mut existing.examples, &incoming.examples, |example| {
+        (
+            example.title.clone(),
+            example.language.clone(),
+            example.code.clone(),
+        )
+    });
+    append_unique(&mut existing.related, &incoming.related);
+    if existing.official_url.is_none() {
+        existing.official_url = incoming.official_url.clone();
+    }
+    if existing.source.is_none() {
+        existing.source = incoming.source.clone();
+    }
+}
+
+fn append_unique(target: &mut Vec<String>, incoming: &[String]) {
+    for item in incoming {
+        if !target.iter().any(|existing| existing == item) {
+            target.push(item.clone());
+        }
+    }
+}
+
+fn extend_unique_by<T, K, F>(target: &mut Vec<T>, incoming: &[T], key: F)
+where
+    T: Clone,
+    K: Ord,
+    F: Fn(&T) -> K,
+{
+    let mut seen = target.iter().map(&key).collect::<BTreeSet<_>>();
+    for item in incoming {
+        if seen.insert(key(item)) {
+            target.push(item.clone());
+        }
     }
 }
 
@@ -1777,11 +1832,12 @@ mod tests {
     use super::{ApiRealm, ApiSource, PageListItem, WikiPage, source_for};
     use super::{apply_override_files, merge_entries_by_path};
     use super::{
-        has_api_markup_block, parse_enum_blocks, parse_function_blocks, parse_realm,
-        parse_type_blocks,
+        dedupe_and_sort, has_api_markup_block, parse_enum_blocks, parse_function_blocks,
+        parse_realm, parse_type_blocks,
     };
     use crate::Args;
-    use gmod_api_db::{ApiEntry, ApiKind};
+    use gmod_api_db::{ApiEntry, ApiKind, ApiParameter, ApiSignature};
+    use std::collections::BTreeMap;
     use std::path::PathBuf;
 
     fn args() -> Args {
@@ -2060,6 +2116,105 @@ mod tests {
         );
         assert_eq!(entries[0].summary, "override");
         assert_eq!(entries[0].realm, ApiRealm::Server);
+    }
+
+    #[test]
+    fn dedupe_merges_duplicate_entry_signatures() {
+        let mut entries = vec![
+            ApiEntry {
+                path: "surface.SetDrawColor".into(),
+                kind: ApiKind::Function,
+                realm: ApiRealm::Client,
+                summary: "Set draw color.".into(),
+                description: Vec::new(),
+                signatures: vec![ApiSignature {
+                    label: "surface.SetDrawColor(r, g, b, a = 255)".into(),
+                    parameters: vec![
+                        ApiParameter {
+                            name: "r".into(),
+                            ty: "number".into(),
+                            description: String::new(),
+                            optional: false,
+                            default: None,
+                            callback: None,
+                        },
+                        ApiParameter {
+                            name: "g".into(),
+                            ty: "number".into(),
+                            description: String::new(),
+                            optional: false,
+                            default: None,
+                            callback: None,
+                        },
+                        ApiParameter {
+                            name: "b".into(),
+                            ty: "number".into(),
+                            description: String::new(),
+                            optional: false,
+                            default: None,
+                            callback: None,
+                        },
+                        ApiParameter {
+                            name: "a".into(),
+                            ty: "number".into(),
+                            description: String::new(),
+                            optional: true,
+                            default: Some("255".into()),
+                            callback: None,
+                        },
+                    ],
+                    returns: Vec::new(),
+                }],
+                warnings: Vec::new(),
+                notes: Vec::new(),
+                examples: Vec::new(),
+                related: Vec::new(),
+                official_url: None,
+                source: None,
+            },
+            ApiEntry {
+                path: "surface.SetDrawColor".into(),
+                kind: ApiKind::Function,
+                realm: ApiRealm::Client,
+                summary: String::new(),
+                description: Vec::new(),
+                signatures: vec![ApiSignature {
+                    label: "surface.SetDrawColor(color)".into(),
+                    parameters: vec![ApiParameter {
+                        name: "color".into(),
+                        ty: "Color|table".into(),
+                        description: String::new(),
+                        optional: false,
+                        default: None,
+                        callback: None,
+                    }],
+                    returns: Vec::new(),
+                }],
+                warnings: Vec::new(),
+                notes: Vec::new(),
+                examples: Vec::new(),
+                related: Vec::new(),
+                official_url: None,
+                source: None,
+            },
+        ];
+        let mut hooks = Vec::new();
+        let mut classes = BTreeMap::new();
+
+        dedupe_and_sort(&mut entries, &mut hooks, &mut classes);
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(
+            entries[0]
+                .signatures
+                .iter()
+                .map(|signature| signature.label.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "surface.SetDrawColor(r, g, b, a = 255)",
+                "surface.SetDrawColor(color)"
+            ]
+        );
     }
 
     #[test]
