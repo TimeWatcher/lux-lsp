@@ -72,6 +72,8 @@ pub struct ApiParameter {
     pub optional: bool,
     #[serde(default)]
     pub default: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub callback: Option<ApiSignature>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -661,6 +663,41 @@ fn append_parameters(out: &mut String, signature: &ApiSignature) {
                 out.push_str(&notes.join("; "));
             }
             out.push('\n');
+            if let Some(callback) = &parameter.callback {
+                out.push_str("  - callback `");
+                out.push_str(&callback.label);
+                out.push_str("`\n");
+                for callback_parameter in &callback.parameters {
+                    out.push_str("    - `");
+                    out.push_str(&callback_parameter.name);
+                    out.push_str("` `");
+                    out.push_str(&callback_parameter.ty);
+                    out.push('`');
+                    if !callback_parameter.description.is_empty() {
+                        out.push_str(" - ");
+                        out.push_str(&clean_markdown_text(&callback_parameter.description));
+                    }
+                    out.push('\n');
+                }
+                if !callback.returns.is_empty() {
+                    out.push_str("    - returns ");
+                    out.push_str(
+                        &callback
+                            .returns
+                            .iter()
+                            .map(|return_value| {
+                                if return_value.name.is_empty() {
+                                    format!("`{}`", return_value.ty)
+                                } else {
+                                    format!("`{}` `{}`", return_value.name, return_value.ty)
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                            .join(", "),
+                    );
+                    out.push('\n');
+                }
+            }
         }
     }
     if !signature.returns.is_empty() {
@@ -1009,6 +1046,25 @@ mod tests {
         );
         assert_eq!(signature.parameters[4].ty, "number{FCVAR}|table<number>");
         assert_eq!(signature.parameters[4].default.as_deref(), Some("0"));
+        let callback = signature.parameters[1]
+            .callback
+            .as_ref()
+            .expect("callback signature");
+        assert_eq!(callback.label, "callback(ply, cmd, args, argStr)");
+        assert_eq!(
+            callback
+                .parameters
+                .iter()
+                .map(|parameter| parameter.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["ply", "cmd", "args", "argStr"]
+        );
+        let auto_complete = signature.parameters[2]
+            .callback
+            .as_ref()
+            .expect("autocomplete callback signature");
+        assert_eq!(auto_complete.label, "autoComplete(cmd, argStr, args)");
+        assert_eq!(auto_complete.returns[0].name, "tbl");
     }
 
     #[test]

@@ -12,7 +12,7 @@ use gmod_api_db::{
 use regex::Regex;
 use serde::Deserialize;
 
-const PARSER_VERSION: &str = "facepunch-json-markup-v2";
+const PARSER_VERSION: &str = "facepunch-json-markup-v3";
 const DEFAULT_BASE_URL: &str = "https://wiki.facepunch.com/gmod";
 
 pub fn run_from_env() -> Result<UpdateSummary, String> {
@@ -1109,17 +1109,59 @@ fn parse_parameters(body: &str) -> Vec<ApiParameter> {
                     let attrs = attributes(&block.attrs);
                     let name = attrs.get("name")?.clone();
                     let default = attrs.get("default").cloned();
+                    let callback = parse_callback_signature(&name, &block.body);
+                    let description_raw = remove_tag_blocks(&block.body, "callback");
                     Some(ApiParameter {
                         name,
                         ty: attrs.get("type").cloned().unwrap_or_else(|| "any".into()),
-                        description: clean_markup(&block.body),
+                        description: clean_markup(&description_raw),
                         optional: default.is_some(),
                         default,
+                        callback,
                     })
                 })
                 .collect()
         })
         .unwrap_or_default()
+}
+
+fn parse_callback_signature(name: &str, body: &str) -> Option<ApiSignature> {
+    let callback = first_tag_raw(body, "callback")?;
+    let parameters = tag_blocks(&callback, "arg")
+        .into_iter()
+        .filter_map(|block| {
+            let attrs = attributes(&block.attrs);
+            let name = attrs.get("name")?.clone();
+            let default = attrs.get("default").cloned();
+            Some(ApiParameter {
+                name,
+                ty: attrs.get("type").cloned().unwrap_or_else(|| "any".into()),
+                description: clean_markup(&block.body),
+                optional: default.is_some(),
+                default,
+                callback: None,
+            })
+        })
+        .collect::<Vec<_>>();
+    let returns = tag_blocks(&callback, "ret")
+        .into_iter()
+        .filter_map(|block| {
+            let attrs = attributes(&block.attrs);
+            Some(ApiReturn {
+                name: attrs.get("name").cloned().unwrap_or_default(),
+                ty: attrs.get("type").cloned().unwrap_or_else(|| "any".into()),
+                description: clean_markup(&block.body),
+            })
+        })
+        .collect::<Vec<_>>();
+    if parameters.is_empty() && returns.is_empty() {
+        return None;
+    }
+    Some(ApiSignature {
+        label: signature_label(name, &parameters),
+        parameters,
+        returns,
+    })
 }
 
 fn parse_returns(body: &str) -> Vec<ApiReturn> {
@@ -1397,6 +1439,8 @@ fn merge_classes_by_name(target: &mut Vec<ClassEntry>, overrides: Vec<ClassEntry
 struct TagBlock {
     attrs: String,
     body: String,
+    start: usize,
+    end: usize,
 }
 
 fn tag_blocks(markup: &str, name: &str) -> Vec<TagBlock> {
@@ -1433,6 +1477,8 @@ fn tag_blocks(markup: &str, name: &str) -> Vec<TagBlock> {
                                 .trim_end()
                                 .to_string(),
                             body: markup[body_start..next.start].to_string(),
+                            start: open.start,
+                            end: next.end + 1,
                         });
                         search_from = next.end + 1;
                         break;
@@ -1602,15 +1648,23 @@ fn decode_entities(input: &str) -> String {
 }
 
 fn remove_admonitions(input: &str) -> String {
-    let mut text = input.to_string();
-    for tag in ["warning", "note"] {
-        let pattern = format!(r#"(?is)<{tag}\b[^>]*>.*?</{tag}>"#);
-        text = Regex::new(&pattern)
-            .expect("admonition regex")
-            .replace_all(&text, "")
-            .to_string();
+    ["warning", "note"]
+        .into_iter()
+        .fold(input.to_string(), |text, tag| remove_tag_blocks(&text, tag))
+}
+
+fn remove_tag_blocks(input: &str, tag: &str) -> String {
+    let mut out = String::new();
+    let mut cursor = 0usize;
+    for block in tag_blocks(input, tag) {
+        if block.start < cursor {
+            continue;
+        }
+        out.push_str(&input[cursor..block.start]);
+        cursor = block.end;
     }
-    text
+    out.push_str(&input[cursor..]);
+    out
 }
 
 fn extract_named_sections(markup: &str, tag: &str) -> Vec<String> {
@@ -1892,12 +1946,31 @@ mod tests {
         );
         assert_eq!(signature.parameters[4].ty, "number{FCVAR}|table<number>");
         assert_eq!(signature.parameters[4].default.as_deref(), Some("0"));
+        let callback = signature.parameters[1]
+            .callback
+            .as_ref()
+            .expect("callback signature");
+        assert_eq!(callback.label, "callback(ply, cmd, args, argStr)");
+        assert_eq!(
+            callback
+                .parameters
+                .iter()
+                .map(|parameter| parameter.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["ply", "cmd", "args", "argStr"]
+        );
+        let auto_complete = signature.parameters[2]
+            .callback
+            .as_ref()
+            .expect("autocomplete callback signature");
+        assert_eq!(auto_complete.label, "autoComplete(cmd, argStr, args)");
+        assert_eq!(auto_complete.returns[0].name, "tbl");
         assert!(
             signature.parameters[1]
                 .description
                 .contains("The callback.")
         );
-        assert!(signature.parameters[1].description.contains("The player."));
+        assert!(!signature.parameters[1].description.contains("The player."));
         assert!(
             signature.parameters[2]
                 .description
